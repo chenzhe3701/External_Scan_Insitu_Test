@@ -4,88 +4,34 @@
 #include "ExternalScan.h"
 #include "tif.hpp"
 
-static const std::string ifastRunner("C:\\Program Files\\FEI\\iFAST\\iFastAutoRecipeRunner.exe");
-static const std::string xPath("Dev0/ao0");
-static const std::string yPath("Dev0/ao1");
-static const std::string etdPath("Dev0/ai0");
-static const float64 vRange = 4.0;//voltage range for scan
+static const float64 maxVoltage = 4.0;//hard coded limit on voltage amplitude to protect scan coils
 
-void runScript(std::string script, DWORD timeoutMS) {
-	//setup variables
-    STARTUPINFO si = { 0 };
-    si.cb = sizeof(si);
-    si.dwFlags = STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW;
-    si.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
-    si.hStdOutput =  GetStdHandle(STD_OUTPUT_HANDLE);
-    si.hStdError = GetStdHandle(STD_ERROR_HANDLE);
-    si.wShowWindow = SW_HIDE;
-
-	PROCESS_INFORMATION pi = {NULL, NULL, 0, 0};
-	std::string command(ifastRunner + " " + script);
-
-	//create process and wait for it to finish
-	if(!CreateProcess(NULL, const_cast<char*>(command.c_str()), NULL, NULL, false, CREATE_NEW_CONSOLE, NULL, NULL, &si, &pi)) throw std::runtime_error("failed to execute " + ifastRunner);
-	DWORD waitVal = WaitForSingleObject(pi.hProcess, timeoutMS);
-    if(WAIT_TIMEOUT == waitVal) throw std::runtime_error("timed out waiting for `" + ifastRunner + "' to execute");
-
-	//get return code, close handles, and check exit code
-	DWORD exitCode;
-	if(!GetExitCodeProcess(pi.hProcess, &exitCode)) throw std::runtime_error("failed to get exit code of " + ifastRunner);
-	CloseHandle(pi.hProcess);
-	CloseHandle(pi.hThread);
-	if(0 != exitCode) throw std::runtime_error(ifastRunner + " returned " + std::to_string(exitCode) + " instead of 0");
-}
+//@brief: collect and image with the current parameter set
+//@param argc: number of arguments
+//@param argv: arguments
+//@param scan: ExternalScan object to populate
+//@param output: output image file name to populate
+//@param log: output time log name to populate (or leave blank if the -t flag isn't used)
+void parseArguments(int argc, char *argv[], ExternalScan& scan, std::string& output, std::string log);
 
 int main(int argc, char *argv[]) {
 	try {
 		//parse arguments
 		ExternalScan scan;
-		scan.xPath = xPath;
-		scan.yPath = yPath;
-		scan.etdPath = etdPath;
-		scan.vRange = vRange;//voltage range for scan
-		std::string imageName, timeLog, preImageScript, postImageScript;
+		std::string imageName, timeLog;
+		parseArguments(argc, argv, scan, imageName, timeLog);
 
-		if(argc < 7) {
-			std::cout << "usage: " << argv[0] << "width height dwell dir type output [timeLog scriptBefore scriptAfter]\n";
-			std::cout << "\twidth: image width in pixels\n";
-			std::cout << "\theight: image height in pixels\n";
-			std::cout << "\tdwell: dwell time in us\n";
-			std::cout << "\tdir: scan direction (must be one of 'horizontal' / 'vertical')\n";
-			std::cout << "\ttype: scan type (must be one of 'snake' / 'raster')\n";
-			std::cout << "\toutput: output image name (tif format)\n";
-			std::cout << "\ttimeLog [optional]: output image name (tif format)\n";
-			std::cout << "\tscriptBefore [optional]: ifast script to execute before collecting image\n";
-			std::cout << "\tscriptAfter [optional]: ifast script to execute after collecting image\n";
-			return EXIT_FAILURE;
-		}
+		//execute scan and write image
+		std::time_t start = std::time(NULL);
+		std::vector< std::vector<int16> > image = scan.execute();
+		std::time_t end = std::time(NULL);
+		Tif::Write(image, (std::uint32_t)scan.getWidth(), (std::uint32_t)scan.getHeight(), imageName);
 
-		//image size, dwell time, scan direction, scan type, and output name are required (in that order)
-		scan.width = atoi(argv[1]);
-		scan.height = atoi(argv[2]);
-		scan.dwell = (float64) atof(argv[3]);
-		std::string dir(argv[4]), type(argv[5]);
-		if(0 == dir.compare("horizontal")) scan.vertical = false;
-		else if(0 == dir.compare("vertical")) scan.vertical = true;
-		else throw std::runtime_error("unknown scan direction " + dir);
-		if(0 == type.compare("snake")) scan.snake = true;
-		else if(0 == type.compare("raster")) scan.snake = false;
-		else throw std::runtime_error("unknown scan type " + type);
-		imageName = std::string(argv[6]);
-
-		//time log and pre and post script are optional
-		if(argc > 7) timeLog = std::string(argv[7]);
-		if(argc > 8) preImageScript = std::string(argv[8]);
-		if(argc > 9) postImageScript = std::string(argv[9]);
-		if(argc >10) std::cout << "warning: ignoring " << argc - 10 << " extra arguments\n";
-
-		//run pre image script
-		if(!preImageScript.empty()) runScript(preImageScript, INFINITE);
-
-		//execute scan, and write image
-		std::time_t start, end;
-		std::vector<niDaqScalar> image = scan.execute(&start, &end);
-		writeTif(image.data(), scan.height, scan.width, imageName);
+		//write z projection of selected frames
+		size_t frameSkip = 5;
+		std::vector<std::int32_t> avgImage(image.front().size(), 0x00000000);
+		for(size_t i = 0; i < image.size(); i++) std::transform(image[i].begin(), image[i].end(), avgImage.begin(), avgImage.begin(), [](const int16& lhs, const std::int32_t& rhs){return (std::int32_t)lhs + rhs;});
+		Tif::Write(avgImage, (std::uint32_t)scan.getWidth(), (std::uint32_t)scan.getHeight(), "avg.tif");
 
 		//append time stamps to log if needed
 		if(!timeLog.empty()) {
@@ -100,11 +46,90 @@ int main(int argc, char *argv[]) {
 			of << imageName << "\t" << std::asctime(std::localtime(&start)) << "\t" << start << "\t" << std::asctime(std::localtime(&end)) << "\t" << end << "\n";
 		}
 
-		//run post image script
-		if(!postImageScript.empty()) runScript(postImageScript, INFINITE);
 	} catch (std::exception& e) {
 		std::cout << e.what();
 		return EXIT_FAILURE;
 	}
-    return EXIT_SUCCESS;
+	return EXIT_SUCCESS;
+}
+
+void parseArguments(int argc, char *argv[], ExternalScan& scan, std::string& output, std::string log) {
+	//build help string
+	scan = ExternalScan();
+	std::stringstream ss;
+	ss << "usage: " + std::string(argv[0]) + " -x path -y path -e path -s samples -a voltage -o file [-w width] [-h height] [-v] [-r] [-t file] [-b voltage] [-i voltage]\n";
+	ss << "\t -x : path to X analog out channel (e.g. 'Dev0/ao0')\n";
+	ss << "\t -y : path to Y analog out channel\n";
+	ss << "\t -e : path to ETD analog in channel\n";
+	ss << "\t -s : samples per pixel\n";
+	ss << "\t -a : half amplitude of scan in volts\n";
+	ss << "\t -o : output image name (tif format)\n";
+	ss << "\t[-w]: scan width in pixels (defaults to " << scan.getWidth() << ")\n";
+	ss << "\t[-h]: scan height in pixels (defaults to " << scan.getHeight() << ")\n";
+	ss << "\t[-v]: scan Y instead of X direction first\n";
+	ss << "\t[-r]: scan in a raster instead of snake pattern\n";
+	ss << "\t[-t]: append image aquisitions times to log file\n";
+	ss << "\t[-b]: ETD voltage for black (defaults to " << scan.getEtdWhite() << "V)\n";
+	ss << "\t[-i]: ETD voltage for white (defaults to " << scan.getEtdWhite() << "V)\n";
+
+	//required arguments
+	std::string xPath, yPath, ePath;
+	float64 scanVoltage = 0.0;
+	uInt64 samples = 2;
+
+	//optional arguments
+	bool snake = true, vertical = false;
+	uInt64 width = scan.getWidth(), height = scan.getHeight();
+	float64 etdMin = scan.getEtdBlack(), etdMax = scan.getEtdWhite();
+
+	for(int i = 1; i < argc; i++) {
+		//make sure flag(s) exist and start with a '-'
+		const size_t flagCount = strlen(argv[i]) - 1;
+		if('-' != argv[i][0] || flagCount == 0) throw std::runtime_error(std::string("unknown option: ") + argv[i]);
+
+		//parse each option in this group
+		for(size_t j = 0; j < flagCount; j++) {
+			//check if this flag has a corresponding argument and make sure that argument exists
+			bool requiresOption = true;
+			switch(argv[i][j+1]) {
+				case 'v':
+				case 'r':
+					requiresOption = false;
+			}
+			if(requiresOption && (i+1 == argc || j+1 != flagCount)) throw std::runtime_error(std::string("missing argument for option ") + argv[i][j]);
+
+			switch(argv[i][j+1]) {
+				case 'x': xPath       = std::string(argv[i+1]); break;
+				case 'y': yPath       = std::string(argv[i+1]); break;
+				case 'e': ePath       = std::string(argv[i+1]); break;
+				case 's': samples     = atoi(argv[i+1]); break;
+				case 'a': scanVoltage = atof(argv[i+1]); break;
+				case 'o': output      = std::string(argv[i+1]); break;
+				case 'w': width       = atoi(argv[i+1]); break;
+				case 'h': height      = atoi(argv[i+1]); break;
+				case 'v': vertical    = true;  break;
+				case 'r': snake       = false; break;
+				case 't': log         = std::string(argv[i+1]); break;
+				case 'b': etdMin      = atof(argv[i+1]); break;
+				case 'i': etdMax      = atof(argv[i+1]); break;
+			}
+			if(requiresOption) ++i;//double increment if the next agrument isn't a flag
+		}
+	}
+
+	//make sure required arguments were passed
+	if(xPath.empty()) throw std::runtime_error(ss.str() + "(x flag missing)");
+	if(yPath.empty()) throw std::runtime_error(ss.str() + "(y flag missing)");
+	if(ePath.empty()) throw std::runtime_error(ss.str() + "(e flag missing)");
+	if(output.empty()) throw std::runtime_error(ss.str() + "(o flag missing)");
+	if(0.0 == scanVoltage) throw std::runtime_error(ss.str() + "(a flag missing or empty)");
+	if(scanVoltage > maxVoltage) throw std::runtime_error(ss.str() + "(scan amplitude is too large - passed " + std::to_string(scanVoltage) + ", max " + std::to_string(maxVoltage) + ")");
+
+	//configure scan object and write scan pattern to hardware buffer
+	scan.setPaths(xPath, yPath, ePath);
+	scan.setDimensions(width, height);
+	scan.setSamples(samples);
+	scan.setScanType(vertical, snake);
+	scan.setCalibrations(scanVoltage, etdMin, etdMax);
+	scan.configureScan();
 }
