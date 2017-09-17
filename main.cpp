@@ -1,4 +1,5 @@
 #include <iostream>
+#include <fstream>
 
 #include "ExternalScan.h"
 #include "tif.hpp"
@@ -43,41 +44,61 @@ int main(int argc, char *argv[]) {
 		scan.yPath = yPath;
 		scan.etdPath = etdPath;
 		scan.vRange = vRange;//voltage range for scan
-		std::string imageName, preImageScript, postImageScript;
+		std::string imageName, timeLog, preImageScript, postImageScript;
 
-		if(argc < 6) {
-			std::cout << "usage: " << argv[0] << "width height dwell dir output [scriptBefore scriptAfter]\n";
+		if(argc < 7) {
+			std::cout << "usage: " << argv[0] << "width height dwell dir type output [timeLog scriptBefore scriptAfter]\n";
 			std::cout << "\twidth: image width in pixels\n";
 			std::cout << "\theight: image height in pixels\n";
 			std::cout << "\tdwell: dwell time in us\n";
 			std::cout << "\tdir: scan direction (must be one of 'horizontal' / 'vertical')\n";
+			std::cout << "\ttype: scan type (must be one of 'snake' / 'raster')\n";
 			std::cout << "\toutput: output image name (tif format)\n";
+			std::cout << "\ttimeLog [optional]: output image name (tif format)\n";
 			std::cout << "\tscriptBefore [optional]: ifast script to execute before collecting image\n";
 			std::cout << "\tscriptAfter [optional]: ifast script to execute after collecting image\n";
 			return EXIT_FAILURE;
 		}
 
-		//image size, dwell time, scan direction, and output name are required (in that order)
+		//image size, dwell time, scan direction, scan type, and output name are required (in that order)
 		scan.width = atoi(argv[1]);
 		scan.height = atoi(argv[2]);
 		scan.dwell = (float64) atof(argv[3]);
-		std::string dir(argv[4]);
+		std::string dir(argv[4]), type(argv[5]);
 		if(0 == dir.compare("horizontal")) scan.vertical = false;
 		else if(0 == dir.compare("vertical")) scan.vertical = true;
 		else throw std::runtime_error("unknown scan direction " + dir);
-		imageName = std::string(argv[5]);
+		if(0 == type.compare("snake")) scan.snake = true;
+		else if(0 == type.compare("raster")) scan.snake = false;
+		else throw std::runtime_error("unknown scan type " + type);
+		imageName = std::string(argv[6]);
 
-		//pre and post script are optional
-		if(argc > 6) preImageScript = std::string(argv[6]);
-		if(argc > 7) postImageScript = std::string(argv[7]);
-		if(argc > 8) std::cout << "warning: ignoring " << argc - 8 << " extra arguments\n";
+		//time log and pre and post script are optional
+		if(argc > 7) timeLog = std::string(argv[7]);
+		if(argc > 8) preImageScript = std::string(argv[8]);
+		if(argc > 9) postImageScript = std::string(argv[9]);
+		if(argc >10) std::cout << "warning: ignoring " << argc - 10 << " extra arguments\n";
 
 		//run pre image script
 		if(!preImageScript.empty()) runScript(preImageScript, INFINITE);
 
 		//execute scan, and write image
-		std::vector<float> image = scan.execute();
+		std::time_t start, end;
+		std::vector<niDaqScalar> image = scan.execute(&start, &end);
 		writeTif(image.data(), scan.height, scan.width, imageName);
+
+		//append time stamps to log if needed
+		if(!timeLog.empty()) {
+			//check if log file already exists
+			std::ifstream is(timeLog);
+			bool exists = is.good();
+			is.close();
+
+			//write time stamp to time stamp log
+			std::ofstream of(timeLog, std::ios_base::app);
+			if(!exists) of << "filename\timage start\timage start (unix)\timage end\timage end (unix)\n";//write header on first entry
+			of << imageName << "\t" << std::asctime(std::localtime(&start)) << "\t" << start << "\t" << std::asctime(std::localtime(&end)) << "\t" << end << "\n";
+		}
 
 		//run post image script
 		if(!postImageScript.empty()) runScript(postImageScript, INFINITE);

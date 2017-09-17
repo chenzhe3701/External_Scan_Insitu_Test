@@ -15,6 +15,7 @@
 #include <numeric>
 #include <algorithm>
 #include <stdexcept>
+#include <ctime>
 
 #ifndef NOMINMAX
 	#define NOMINMAX//windows min/max definitions conflict with std
@@ -25,6 +26,14 @@
 #include <windows.h>
 #include "NIDAQmx.h"
 
+//unsigned 16 bit
+typedef uInt16 niDaqScalar;
+#define DAQmxReadBinary16 DAQmxReadBinaryU16
+
+//signed 16 bit
+//typedef int16 niDaqScalar;
+//#define DAQmxReadBinary16 DAQmxReadBinaryI16
+
 struct ExternalScan {
 	std::string xPath, yPath;//path to analog output channels for scan control
 	std::string etdPath;//path to analog input channel for etd
@@ -32,6 +41,7 @@ struct ExternalScan {
 	float64 dwell;//dwell time in us
 	float64 vRange;//voltage range for scan (scan will go from -vRange -> +vRange in the larger direction)
 	bool vertical;//true/false to scan in vertical/horiztonal direction
+	bool snake;//true/false to snake/raster
 	float64 minEtd, maxEtd;//anticipated range of voltages out of the etd
 	TaskHandle hInput, hOutput;
 
@@ -58,7 +68,7 @@ struct ExternalScan {
 		}
 	}
 
-	std::vector<float> execute() {
+	std::vector<niDaqScalar> execute(std::time_t* start = NULL, std::time_t* end = NULL) {
 		//check scan rate, the microscope is limited to a 300 ns dwell at 768 x 512
 		//3.33 x factor of safety -> require at least 768 us to cover full -4 -> +4 V scan
 		const float64 minDwell = (768.0 / (vertical ? height : width)) * (4.0 / vRange);//minimum dwell time in us
@@ -114,12 +124,32 @@ struct ExternalScan {
 		//generate scan
 		std::vector<float64> data;
 		data.reserve(2 * totalPixels);
-		if(vertical) {
-			for(size_t i = 0; i < width; i++) data.insert(data.end(), height, xData[i]);
-			for(size_t i = 0; i < width; i++) data.insert(data.end(), yData.begin(), yData.end());
+		if(snake) {
+			if(vertical) {
+				for(size_t i = 0; i < width; i++) data.insert(data.end(), height, xData[i]);
+				for(size_t i = 0; i < width; i++) {
+					if(i % 2 == 0)
+						data.insert(data.end(), yData.begin(), yData.end());
+					else
+						data.insert(data.end(), yData.rbegin(), yData.rend());
+				}
+			} else {
+				for(size_t i = 0; i < height; i++) {
+					if(i % 2 == 0)
+						data.insert(data.end(), xData.begin(), xData.end());
+					else
+						data.insert(data.end(), xData.rbegin(), xData.rend());
+				}
+				for(size_t i = 0; i < height; i++) data.insert(data.end(), width, yData[i]);
+			}
 		} else {
-			for(size_t i = 0; i < height; i++) data.insert(data.end(), xData.begin(), xData.end());
-			for(size_t i = 0; i < height; i++) data.insert(data.end(), width, yData[i]);
+			if(vertical) {
+				for(size_t i = 0; i < width; i++) data.insert(data.end(), height, xData[i]);
+				for(size_t i = 0; i < width; i++) data.insert(data.end(), yData.begin(), yData.end());
+			} else {
+				for(size_t i = 0; i < height; i++) data.insert(data.end(), xData.begin(), xData.end());
+				for(size_t i = 0; i < height; i++) data.insert(data.end(), width, yData[i]);
+			}
 		}
 
 		//write scan data to device buffer
@@ -128,6 +158,7 @@ struct ExternalScan {
 		DAQmxTry(totalPixels - written, "writing all scan data to buffer");
 
 		//execute scan
+		if(NULL != start) *start = std::time(NULL);
 		DAQmxTry(DAQmxStartTask(hOutput), "starting output task");
 		DAQmxTry(DAQmxStartTask(hInput), "starting input task");
 		
@@ -135,10 +166,12 @@ struct ExternalScan {
 		float64 scanTime = float64(totalPixels) * dwell / 1000000.0 + 5.0;//allow an extra 5s
 		DAQmxTry(DAQmxWaitUntilTaskDone(hOutput, scanTime), "waiting for output task");
 		DAQmxTry(DAQmxWaitUntilTaskDone(hInput, scanTime), "waiting for input task");
+		if(NULL != end) *end = std::time(NULL);
 
 		//read image from buffer (over top of scan data)
 		int32 read;
-		DAQmxTry(DAQmxReadAnalogF64(hInput, totalPixels, DAQmx_Val_WaitInfinitely, DAQmx_Val_GroupByChannel, data.data(), data.size(), &read, NULL), "reading data from buffer");
+		std::vector<niDaqScalar> intData(totalPixels);
+		DAQmxTry(DAQmxReadBinary16(hInput, totalPixels, DAQmx_Val_WaitInfinitely, DAQmx_Val_GroupByChannel, intData.data(), intData.size(), &read, NULL), "reading data from buffer");
 		DAQmxTry(read - totalPixels, "reading all data from buffer");
 
 		//clean up tasks and return
@@ -147,18 +180,28 @@ struct ExternalScan {
 		DAQmxStopTask(hOutput);
 		DAQmxClearTask(hOutput);
 
-		//convert to float (no data loss since the daq is only 16 bits anyway) and reorder data if needed
-		std::vector<float> image(totalPixels);
-		if(vertical) {//reorder data to be in row major order
+		//convert snake to raster if needed
+		if(snake) {
+			if(vertical) {
+				for(uInt64 i = 1; i < width; i+=2)
+					std::reverse(intData.begin() + i * height, intData.begin() + i * height + height);
+			} else {
+				for(uInt64 i = 1; i < height; i+=2)
+					std::reverse(intData.begin() + i * width, intData.begin() + i * width + width);
+			}
+		}
+
+		//reorder data to be in row major order if needed
+		if(vertical) {
+			std::vector<niDaqScalar> transposed(totalPixels);
 			for(uInt64 j = 0; j < height; j++) {
 				for(uInt64 i = 0; i < width; i++) {
-					image[width*j+i] = (float)data[height*i+j];
+					transposed[width*j+i] = intData[height*i+j];
 				}
 			}
-		} else {//just copy
-			for(uInt64 i = 0; i < totalPixels; i++) image[i] = (float)data[i];
+			transposed.swap(intData);
 		}
-		return image;
+		return intData;
 	}
 };
 
