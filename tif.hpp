@@ -1,3 +1,35 @@
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ *                                                                                 *
+ * Copyright (c) 2017, William C. Lenthe                                           *
+ * All rights reserved.                                                            *
+ *                                                                                 *
+ * Redistribution and use in source and binary forms, with or without              *
+ * modification, are permitted provided that the following conditions are met:     *
+ *                                                                                 *
+ * 1. Redistributions of source code must retain the above copyright notice, this  *
+ *    list of conditions and the following disclaimer.                             *
+ *                                                                                 *
+ * 2. Redistributions in binary form must reproduce the above copyright notice,    *
+ *    this list of conditions and the following disclaimer in the documentation    *
+ *    and/or other materials provided with the distribution.                       *
+ *                                                                                 *
+ * 3. Neither the name of the copyright holder nor the names of its                *
+ *    contributors may be used to endorse or promote products derived from         *
+ *    this software without specific prior written permission.                     *
+ *                                                                                 *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"     *
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE       *
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE  *
+ * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE    *
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL      *
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR      *
+ * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER      *
+ * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,   *
+ * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE   *
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.            *
+ *                                                                                 *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
 #ifndef _tif_h_
 #define _tif_h_
 
@@ -86,22 +118,28 @@ struct Tif {
 		Tif tif(w, h);
 		std::ofstream os(fileName, std::ios::out | std::ios::binary);
 		tif.writeHeader(os);
-		tif.writeIfd<T>(os, 0x0008, true);
+		tif.writeIfd<T>(os, 0x00000008, true);
 		tif.writeSlice<T>(os, data);
 	}
-	template <typename T> static void Write(std::vector<T>& buff, const std::uint32_t w, const std::uint32_t h, std::string fileName) {Write(buff.data(), w, h, fileName);}
 
 	template <typename T>
-	static void Write(std::vector< std::vector<T> >& buff, const std::uint32_t w, const std::uint32_t h, std::string fileName) {
+	static void Write(T const * const * const data, const std::uint32_t w, const std::uint32_t h, const std::uint32_t slices, std::string fileName) {
 		//open file and write header + single ifd
 		Tif tif(w, h);
 		std::ofstream os(fileName, std::ios::out | std::ios::binary);
 		tif.writeHeader(os);
-		std::uint32_t offset = 0x0008;
-		for(size_t i = 0; i < buff.size(); i++) {
-			offset = tif.writeIfd<T>(os, offset, i+1 == buff.size());
-			tif.writeSlice<T>(os, buff[i].data());
+		std::uint32_t offset = 0x00000008;
+		for(std::uint32_t i = 0; i < slices; i++) {
+			offset = tif.writeIfd<T>(os, offset, i+1 == slices);
+			tif.writeSlice<T>(os, data[i]);
 		}
+	}
+
+	template <typename T> static void Write(std::vector<T>& buff, const std::uint32_t w, const std::uint32_t h, std::string fileName) {Write(buff.data(), w, h, fileName);}
+	template <typename T>	static void Write(std::vector< std::vector<T> >& buff, const std::uint32_t w, const std::uint32_t h, std::string fileName) {
+		std::vector<T const *> slicePointers(buff.size());
+		for(size_t i = 0; i < buff.size(); i++) slicePointers[i] = buff[i].data();
+		Write(slicePointers.data(), w, h, (std::uint32_t)slicePointers.size(), fileName);
 	}
 
 	private:
