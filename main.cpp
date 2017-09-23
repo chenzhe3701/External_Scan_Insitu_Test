@@ -42,68 +42,112 @@ int main(int argc, char *argv[]) {
 	try {
 		//optional arguments
 		bool snake = true;
-		std::string timeLog;
-		uInt64 width = 4096, height = 4096;
+		std::string timeLog = "d:\\timgLog.txt";
+		uInt64 width = 4096;
+		uInt64 height = 4096;
+
+		//required arguments
+		std::string xPath = "dev2/ao0";
+		std::string yPath = "dev2/ao1";
+		std::string ePath = "dev2/ai2";
+		std::string output = "";
+		float64 scanVoltage = 3.86;	//horizontal voltage
+		float64 scanVoltageB = 3.9;	//vertical voltage
+		uInt64 samples = 2;
+
+		float64 vBlack = -1.25;			//voltage for black
+		float64 vWhite = 1.75;			//voltage for whilte
+		bool correct = true;			//use fft to correct
+		bool saveAverageOnly = true;	//whether to save averaged figure ony
+		uInt64 nFrames = 8;				//frames from last to integrate
+		float64 maxShift = 10.0;		//maximum pixel shift to correct
+		bool delayTF = 1;				//whether to use dealy at left edge
+		uInt64 autoLoop = 0;			//whether use this code to do an auto image test with iFast
+		std::string output_raw;			// records the raw output name
 
 		//build help string
 		std::stringstream ss;
 		ss << "usage: " + std::string(argv[0]) + " -x path -y path -e path -s samples -a voltage -o file [-w width] [-h height] [-r] [-t file]\n";
-		ss << "\t -x : path to X analog out channel (e.g. 'Dev0/ao0')\n";
-		ss << "\t -y : path to Y analog out channel\n";
-		ss << "\t -e : path to ETD analog in channel\n";
-		ss << "\t -s : samples per pixel\n";
-		ss << "\t -a : half amplitude of scan in volts\n";
-		ss << "\t -o : output image name (tif format)\n";
+		ss << "\t -x : path to X analog out channel (e.g. 'Dev0/ao0') (defaults to " << xPath << ")\n";
+		ss << "\t -y : path to Y analog out channel (defaults to " << yPath << ")\n";
+		ss << "\t -e : path to ETD analog in channel (defaults to " << ePath << ")\n";
+		ss << "\t -s : samples per pixel (defaults to " << samples << ")\n";
+		ss << "\t -a : half amplitude of scan in volts, horizontal (defaults to " << scanVoltage << ")\n";
+		ss << "\t -b : half amplitude of scan in volts, vertical (defaults to " << scanVoltageB << ")\n";
+		ss << "\t -o : output image name (tif format) (defaults to " << output << ")\n";
 		ss << "\t[-w]: scan width in pixels (defaults to " << width << ")\n";
 		ss << "\t[-h]: scan height in pixels (defaults to " << height << ")\n";
-		ss << "\t[-r]: scan in a raster instead of snake pattern\n";
-		ss << "\t[-t]: append image aquisitions times to log file\n";
-
-		//required arguments
-		std::string xPath, yPath, ePath, output;
-		float64 scanVoltage = 0.0;
-		uInt64 samples = 2;
+		ss << "\t[-r]: scan in a raster instead of snake pattern (defaults to false, i.e., using snake)\n";
+		ss << "\t[-t]: append image aquisitions times to log file (defaults to " << timeLog << ")\n";
+		ss << "\t[-k]: voltage for black pixel (defaults to " << vBlack << ")\n";
+		ss << "\t[-i]: voltage for white pixel (defaults to " << vWhite << ")\n";
+		ss << "\t[-f]: max number of pixels to shift (defaults to " << maxShift << ")\n";
+		ss << "\t[-c]: correct frames or not (defaults to " << correct << ")\n";
+		ss << "\t[-v]: save averaged image only (defaults to " << saveAverageOnly << ")\n";
+		ss << "\t[-n]: # of frames from last to integrate (defaults to " << nFrames << ")\n";
+		ss << "\t[-d]: delay to compensate for distortion at left edge (defaults to " << delayTF << ")\n";
+		ss << "\t[-p]: autoLoop until stop signal (3000Hz) and auto fileName, default = " << autoLoop << ")\n";
 
 		//parse arguments
-		for(int i = 1; i < argc; i++) {
+		for (int i = 1; i < argc; i++) {
 			//make sure flag(s) exist and start with a '-'
 			const size_t flagCount = strlen(argv[i]) - 1;
-			if('-' != argv[i][0] || flagCount == 0) throw std::runtime_error(std::string("unknown option: ") + argv[i]);
+			if ('-' != argv[i][0] || flagCount == 0) throw std::runtime_error(std::string("unknown option: ") + argv[i]);
 
 			//parse each option in this group
-			for(size_t j = 0; j < flagCount; j++) {
+			for (size_t j = 0; j < flagCount; j++) {
 				//check if this flag has a corresponding argument and make sure that argument exists
-				bool requiresOption = true;
-				switch(argv[i][j+1]) {
-					case 'r':
-						requiresOption = false;
+				bool requiresOption = true;		// requiresOption means --> switch should be followed by another 
+				switch (argv[i][j + 1]) {
+				case 'r':
+					requiresOption = false;
 				}
-				if(requiresOption && (i+1 == argc || j+1 != flagCount)) throw std::runtime_error(std::string("missing argument for option ") + argv[i][j]);
+				if (requiresOption && (i + 1 == argc || j + 1 != flagCount)) throw std::runtime_error(std::string("missing argument for option ") + argv[i][j]);
 
-				switch(argv[i][j+1]) {
-					case 'x': xPath       = std::string(argv[i+1]); break;
-					case 'y': yPath       = std::string(argv[i+1]); break;
-					case 'e': ePath       = std::string(argv[i+1]); break;
-					case 's': samples     = atoi(argv[i+1]); break;
-					case 'a': scanVoltage = atof(argv[i+1]); break;
-					case 'o': output      = std::string(argv[i+1]); break;
-					case 'w': width       = atoi(argv[i+1]); break;
-					case 'h': height      = atoi(argv[i+1]); break;
-					case 'r': snake       = false; break;
-					case 't': timeLog     = std::string(argv[i+1]); break;
+				switch (argv[i][j + 1]) {
+				case 'x': xPath = std::string(argv[i + 1]); break;
+				case 'y': yPath = std::string(argv[i + 1]); break;
+				case 'e': ePath = std::string(argv[i + 1]); break;
+				case 's': samples = atoi(argv[i + 1]); break;
+				case 'a': scanVoltage = atof(argv[i + 1]); break;
+				case 'o': {
+					output = std::string(argv[i + 1]);
+					output_raw = output;
+					break;
 				}
-				if(requiresOption) ++i;//double increment if the next agrument isn't a flag
+				case 'w': width = atoi(argv[i + 1]); break;
+				case 'h': height = atoi(argv[i + 1]); break;
+				case 'r': snake = false; break;
+				case 't': timeLog = std::string(argv[i + 1]); break;
+
+				case 'k': vBlack = atof(argv[i + 1]); break;
+				case 'i': vWhite = atof(argv[i + 1]); break;
+				case 'f': maxShift = atof(argv[i + 1]); break;
+				case 'c': correct = atoi(argv[i + 1]); break;
+				case 'v': saveAverageOnly = atoi(argv[i + 1]); break;
+				case 'n': nFrames = atoi(argv[i + 1]); break;
+				case 'd': delayTF = atoi(argv[i + 1]); break;
+				case 'b': scanVoltageB = atof(argv[i + 1]); break;
+				case 'p': autoLoop = atoi(argv[i + 1]); break;
+				}
+				if (requiresOption) ++i;//double increment if the next agrument isn't a flag
+			}
+			if (nFrames > samples){
+				std::cout << "nFrames > samples found, so just use the latter value" << std::endl;
+				nFrames = samples;
 			}
 		}
 
 		//make sure required arguments were passed
-		if(xPath.empty()) throw std::runtime_error(ss.str() + "(x flag missing)");
-		if(yPath.empty()) throw std::runtime_error(ss.str() + "(y flag missing)");
-		if(ePath.empty()) throw std::runtime_error(ss.str() + "(e flag missing)");
-		if(output.empty()) throw std::runtime_error(ss.str() + "(o flag missing)");
-		if(0.0 == scanVoltage) throw std::runtime_error(ss.str() + "(a flag missing or empty)");
-		if(scanVoltage > maxVoltage) throw std::runtime_error(ss.str() + "(scan amplitude is too large - passed " + std::to_string(scanVoltage) + ", max " + std::to_string(maxVoltage) + ")");
-		
+		if (xPath.empty()) throw std::runtime_error(ss.str() + "(x flag missing)\n");
+		if (yPath.empty()) throw std::runtime_error(ss.str() + "(y flag missing)\n");
+		if (ePath.empty()) throw std::runtime_error(ss.str() + "(e flag missing)\n");
+		if (output.empty()) throw std::runtime_error(ss.str() + "(o flag missing)\n");
+		if (0.0 == scanVoltage) throw std::runtime_error(ss.str() + "(a flag missing or empty)\n");
+		if (0.0 == scanVoltageB) throw std::runtime_error(ss.str() + "(b flag missing or empty)\n");
+		if (scanVoltage > maxVoltage) throw std::runtime_error(ss.str() + "(scan amplitude is too large - passed " + std::to_string(scanVoltage) + ", max " + std::to_string(maxVoltage) + ")\n");
+		if (scanVoltageB > maxVoltage) throw std::runtime_error(ss.str() + "(scan amplitude is too large - passed " + std::to_string(scanVoltage) + ", max " + std::to_string(maxVoltage) + ")\n");
+
 		//create scan opject
 		ExternalScan scan(xPath, yPath, ePath, samples, scanVoltage, width, height, snake);
 
@@ -113,7 +157,7 @@ int main(int argc, char *argv[]) {
 		std::time_t end = std::time(NULL);
 
 		//append time stamps to log if needed
-		if(!timeLog.empty()) {
+		if (!timeLog.empty()) {
 			//check if log file already exists
 			std::ifstream is(timeLog);
 			bool exists = is.good();
@@ -121,10 +165,15 @@ int main(int argc, char *argv[]) {
 
 			//write time stamp to time stamp log
 			std::ofstream of(timeLog, std::ios_base::app);
-			if(!exists) of << "filename\timage start\timage start (unix)\timage end\timage end (unix)\n";//write header on first entry
-			of << output << "\t" << std::asctime(std::localtime(&start)) << "\t" << start << "\t" << std::asctime(std::localtime(&end)) << "\t" << end << "\n";
+			if (!exists) of << "filename\timage start\timage start (unix)\timage end\timage end (unix)\n";//write header on first entry
+			std::string startTime = std::asctime(std::localtime(&start));
+			startTime.pop_back();
+			std::string endTime = std::asctime(std::localtime(&end));
+			endTime.pop_back();
+			of << output << "\t" << startTime.data() << "\t" << start << "\t" << endTime.data() << "\t" << end << "\n";
 		}
-	} catch (std::exception& e) {
+	}
+	catch (std::exception& e) {
 		std::cout << e.what();
 		return EXIT_FAILURE;
 	}
