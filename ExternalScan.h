@@ -252,11 +252,11 @@ void ExternalScan::execute(std::string fileName) {
 	if(correct) {
 		try {
 			//compute / apply shift
-			std::vector<float> shifts = correlateRows<float>(frameImages, height, width, snake[i], 2.0);
-			Tif::Write(frames, width, height, fileName);
+			std::vector<float> shifts = correlateRows<float>(frameImages, height, width, snake, 2.0);
+			Tif::Write(frameImages, width, height, fileName);
 		} catch (std::exception& e) {
 			Tif::Write(frameImages, (uInt32)width, (uInt32)height, fileName);//make sure that we save the data before throwing the exception
-			std::rethrow_exception(e);
+			std::rethrow_exception(std::make_exception_ptr(e));
 		}
 	} else {
 		//write image to file
