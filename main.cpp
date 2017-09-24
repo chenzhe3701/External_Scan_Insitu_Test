@@ -40,60 +40,52 @@ static const float64 maxVoltage = 4.0;//hard coded limit on voltage amplitude to
 
 int main(int argc, char *argv[]) {
 	try {
-		//optional arguments
-		bool snake = true;
-		std::string timeLog;
-		uInt64 width = 4096, height = 4096;
+		//arguments
+		std::string xPath = "dev2/ao0";
+		std::string yPath = "dev2/ao1";
+		std::string ePath = "dev2/ai2";
+		std::string output = "";
+		float64 scanVoltage = 3.86;	//horizontal voltage
+		float64 scanVoltageB = 3.9;	//vertical voltage
+		uInt64 samples = 2;
 
-		//chenzhe, add more input parameters
-		float64 vBlack = -1.25;
-		float64 vWhite = 1.75;
-		bool correct = true;
-		bool saveAverageOnly = true;
-		uInt64 nFrames = 8;
-		float64 maxShift = 10.0;
-		bool delayTF = 1;
-		uInt64 autoLoop = 0;
-		std::string output_raw;	// records the raw output name
+		bool snake = true;
+		std::string timeLog = "d:\\timgLog.txt";
+		uInt64 width = 4096;
+		uInt64 height = 4096;
+
+		float64 vBlack = -1.25;			//voltage for black
+		float64 vWhite = 1.75;			//voltage for whilte
+		bool correct = true;			//use fft to correct
+		bool saveAverageOnly = true;	//whether to save averaged figure ony
+		uInt64 nFrames = 8;				//frames from last to integrate
+		float64 maxShift = 10.0;		//maximum pixel shift to correct
+		bool delayTF = 1;				//whether to use dealy at left edge
+		uInt64 autoLoop = 0;			//whether use this code to do an auto image test with iFast
+		std::string output_raw;			// records the raw output name
 
 		//build help string
 		std::stringstream ss;
 		ss << "usage: " + std::string(argv[0]) + " -x path -y path -e path -s samples -a voltage -o file [-w width] [-h height] [-r] [-t file]\n";
-		ss << "\t -x : path to X analog out channel (e.g. 'Dev0/ao0')\n";
-		ss << "\t -y : path to Y analog out channel\n";
-		ss << "\t -e : path to ETD analog in channel\n";
-		ss << "\t -s : samples per pixel\n";
-		ss << "\t -a : half amplitude of scan in volts\n";
-		ss << "\t -o : output image name (tif format)\n";
+		ss << "\t -x : path to X analog out channel (e.g. 'Dev0/ao0') (defaults to " << xPath << ")\n";
+		ss << "\t -y : path to Y analog out channel (defaults to " << yPath << ")\n";
+		ss << "\t -e : path to ETD analog in channel (defaults to " << ePath << ")\n";
+		ss << "\t -s : samples per pixel (defaults to " << samples << ")\n";
+		ss << "\t -a : half amplitude of scan in volts, horizontal (defaults to " << scanVoltage << ")\n";
+		ss << "\t -b : half amplitude of scan in volts, vertical (defaults to " << scanVoltageB << ")\n";
+		ss << "\t -o : output image name (tif format) (defaults to " << output << ")\n";
 		ss << "\t[-w]: scan width in pixels (defaults to " << width << ")\n";
 		ss << "\t[-h]: scan height in pixels (defaults to " << height << ")\n";
-		ss << "\t[-r]: scan in a raster instead of snake pattern\n";
-		ss << "\t[-t]: append image aquisitions times to log file\n";
-		// chenzhe add these to help string
+		ss << "\t[-r]: scan in a raster instead of snake pattern (defaults to false, i.e., using snake)\n";
+		ss << "\t[-t]: append image aquisitions times to log file (defaults to " << timeLog << ")\n";
 		ss << "\t[-k]: voltage for black pixel (defaults to " << vBlack << ")\n";
 		ss << "\t[-i]: voltage for white pixel (defaults to " << vWhite << ")\n";
 		ss << "\t[-f]: max number of pixels to shift (defaults to " << maxShift << ")\n";
 		ss << "\t[-c]: correct frames or not (defaults to " << correct << ")\n";
 		ss << "\t[-v]: save averaged image only (defaults to " << saveAverageOnly << ")\n";
 		ss << "\t[-n]: # of frames from last to integrate (defaults to " << nFrames << ")\n";
-		ss << "\t[-d]: delay to compensate for distortion at edge (defaults to " << delayTF << ")\n";
-		ss << "\t -s : samples per pixel (defaults to 16)\n";
-		ss << "\t -a : half amplitude of scan in volts (defaults to 4)\n";
-		ss << "\t -b : half amplitude of scan in volts in horizontal direction (defaults to 4)\n";
-		ss << "\t[-p]: autoLoop until 3000Hz and auto fileName, default = " << autoLoop << ")\n";
-
-		//required arguments
-		std::string xPath, yPath, ePath, output;
-		float64 scanVoltage = 0.0;
-		uInt64 samples = 2;
-		//ZheChen: default value.  Could change and recompile depending on usage.
-		xPath = "dev1/ao0";
-		yPath = "dev1/ao1";
-		ePath = "dev1/ai2";
-		scanVoltage = 3.86;	// once was 3.2
-		samples = 16;
-		timeLog = "d:\timgLog.txt";
-		float64 scanVoltageB = 3.9;	// once was 3.94
+		ss << "\t[-d]: delay to compensate for distortion at left edge (defaults to " << delayTF << ")\n";
+		ss << "\t[-p]: autoLoop until stop signal (3000Hz) and auto fileName, default = " << autoLoop << ")\n";
 
 		//parse arguments
 		for (int i = 1; i < argc; i++) {
@@ -104,7 +96,7 @@ int main(int argc, char *argv[]) {
 			//parse each option in this group
 			for (size_t j = 0; j < flagCount; j++) {
 				//check if this flag has a corresponding argument and make sure that argument exists
-				bool requiresOption = true;
+				bool requiresOption = true;		// requiresOption means --> switch should be followed by another 
 				switch (argv[i][j + 1]) {
 				case 'r':
 					requiresOption = false;
@@ -120,13 +112,13 @@ int main(int argc, char *argv[]) {
 				case 'o': {
 					output = std::string(argv[i + 1]);
 					output_raw = output;
-					break; 
+					break;
 				}
 				case 'w': width = atoi(argv[i + 1]); break;
 				case 'h': height = atoi(argv[i + 1]); break;
 				case 'r': snake = false; break;
 				case 't': timeLog = std::string(argv[i + 1]); break;
-					// chenzhe add these for the new parameters
+
 				case 'k': vBlack = atof(argv[i + 1]); break;
 				case 'i': vWhite = atof(argv[i + 1]); break;
 				case 'f': maxShift = atof(argv[i + 1]); break;
@@ -139,22 +131,21 @@ int main(int argc, char *argv[]) {
 				}
 				if (requiresOption) ++i;//double increment if the next agrument isn't a flag
 			}
-			// chenzhe, add, check correct
 			if (nFrames > samples){
-				std::cout << "nFrames > samples found, so make them equal" << std::endl;
+				std::cout << "nFrames > samples found, so just use the latter value" << std::endl;
 				nFrames = samples;
 			}
-			// chenzhe, end of addition
 		}
 
 		//make sure required arguments were passed
-		if (xPath.empty()) throw std::runtime_error(ss.str() + "(x flag missing)");
-		if (yPath.empty()) throw std::runtime_error(ss.str() + "(y flag missing)");
-		if (ePath.empty()) throw std::runtime_error(ss.str() + "(e flag missing)");
-		if (output.empty()) throw std::runtime_error(ss.str() + "(o flag missing)");
-		if (0.0 == scanVoltage) throw std::runtime_error(ss.str() + "(a flag missing or empty)");
-		if (scanVoltage > maxVoltage) throw std::runtime_error(ss.str() + "(scan amplitude is too large - passed " + std::to_string(scanVoltage) + ", max " + std::to_string(maxVoltage) + ")");
-		if (scanVoltageB > maxVoltage) throw std::runtime_error(ss.str() + "(scan amplitude is too large - passed " + std::to_string(scanVoltage) + ", max " + std::to_string(maxVoltage) + ")");
+		if (xPath.empty()) throw std::runtime_error(ss.str() + "(x flag missing)\n");
+		if (yPath.empty()) throw std::runtime_error(ss.str() + "(y flag missing)\n");
+		if (ePath.empty()) throw std::runtime_error(ss.str() + "(e flag missing)\n");
+		if (output.empty()) throw std::runtime_error(ss.str() + "(o flag missing)\n");
+		if (0.0 == scanVoltage) throw std::runtime_error(ss.str() + "(a flag missing or empty)\n");
+		if (0.0 == scanVoltageB) throw std::runtime_error(ss.str() + "(b flag missing or empty)\n");
+		if (scanVoltage > maxVoltage) throw std::runtime_error(ss.str() + "(scan amplitude is too large - passed " + std::to_string(scanVoltage) + ", max " + std::to_string(maxVoltage) + ")\n");
+		if (scanVoltageB > maxVoltage) throw std::runtime_error(ss.str() + "(scan amplitude is too large - passed " + std::to_string(scanVoltage) + ", max " + std::to_string(maxVoltage) + ")\n");
 
 		// chenzhe, detectFrequency and do the scanning
 		int iR = 0;
@@ -175,11 +166,11 @@ int main(int argc, char *argv[]) {
 			}
 
 			//create scan opject
-			ExternalScan scan(xPath, yPath, ePath, samples, scanVoltage, width, height, snake, vBlack, vWhite, delayTF, scanVoltageB);		// chenzhe, add vBlack vWhite input
+			ExternalScan scan(xPath, yPath, ePath, samples, scanVoltage, width, height, snake, vBlack, vWhite, delayTF, scanVoltageB);
 
 			//execute scan and write image
 			std::time_t start = std::time(NULL);
-			scan.execute(output, correct, saveAverageOnly, nFrames, maxShift);	// chenzhe, add variable
+			scan.execute(output, correct, saveAverageOnly, nFrames, maxShift);
 			std::time_t end = std::time(NULL);
 
 			//append time stamps to log if needed
@@ -192,19 +183,14 @@ int main(int argc, char *argv[]) {
 				//write time stamp to time stamp log
 				std::ofstream of(timeLog, std::ios_base::app);
 				if (!exists) of << "filename\timage start\timage start (unix)\timage end\timage end (unix)\n";//write header on first entry
-
-				// chenzhe: I disabled the old expression and add the new expression:
 				std::string startTime = std::asctime(std::localtime(&start));
 				startTime.pop_back();
 				std::string endTime = std::asctime(std::localtime(&end));
 				endTime.pop_back();
 				of << output << "\t" << startTime.data() << "\t" << start << "\t" << endTime.data() << "\t" << end << "\n";
-				// of << output << "\t" << std::asctime(std::localtime(&start)) << "\t" << start << "\t" << std::asctime(std::localtime(&end)) << "\t" << end << "\n";
-				// End modify, chenzhe
 			}
 
-			// beep to let MPC know scan finished
-			Beep(3000, 10000);
+			Beep(3000, 10000);	// beep to let MPC know scan finished
 		}
 	}
 	catch (std::exception& e) {
