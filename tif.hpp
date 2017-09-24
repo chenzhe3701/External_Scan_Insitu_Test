@@ -109,7 +109,10 @@ struct Tif {
 	void writeSlice(std::ofstream& os, T const * const data) {
 		//most readers seem to ignore the orientation flag so data should be written with image convention
 		const int rowBytes = (int)width * sizeof(T);
-		for(int i = int(height)-1; i >= 0; i--) os.write(reinterpret_cast<char const*>(data) + i * rowBytes, rowBytes);
+		//chenzhe's note: So originally, Will's code is to write data up-side-down. But I changed it back.
+		// for(int i = int(height)-1; i >= 0; i--) os.write(reinterpret_cast<char const*>(data) + i * rowBytes, rowBytes);
+		for (int i = 0; i < int(height); i++) os.write(reinterpret_cast<char const*>(data)+i * rowBytes, rowBytes);
+		// chenzhe note, end of modification
 	}
 
 	template <typename T>

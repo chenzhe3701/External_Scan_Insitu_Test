@@ -199,7 +199,7 @@ std::vector<Real> correlateRows(std::vector< std::vector<T> >& frames, const int
 	std::vector< std::complex<Real> > refFrame(fftSizePad * rows);
 	for(int i = 0; i < rows; i++) {
 		std::copy(frames.back().begin() + i * cols, frames.back().begin() + (i+1) * cols, rowData.begin());//copy data to Real
-		fftw.forward(rowData.data(), refFrame.data() + i * fftSizePad);//compute fft
+		fftw.forward(rowData.data(), refFrame.data() + i * fftSizePad);//compute fft	// chenzhe, note: the 2nd argument here can be seen as a pointer
 	}
 	for(std::complex<Real>& v : refFrame) v = std::conj(v);//need complex conjugate of reference fft
 

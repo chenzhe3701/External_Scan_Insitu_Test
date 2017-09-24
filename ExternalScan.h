@@ -47,25 +47,32 @@
 #ifndef NOMINMAX
 	#define NOMINMAX//windows min/max definitions conflict with std
 #endif
-#ifndef WIN32_LEAN_AND_MEAN
-	#define WIN32_LEAN_AND_MEAN//limit extra windows includes
-#endif
+// chenzhe, disabled the following three lines to use more windows features
+//#ifndef WIN32_LEAN_AND_MEAN
+//	#define WIN32_LEAN_AND_MEAN//limit extra windows includes
+//#endif
 #include <windows.h>
 #include "NIDAQmx.h"
+#include "MachineTalkControl.hpp"	// chenzhe add this
 
 class ExternalScan {
 	private:
 		std::string xPath, yPath;                     //path to analog output channels for scan control
 		std::string etdPath;                          //path to analog input channel for etd
 		uInt64 samples;                               //samples per pixel (collection occurs at fastest possible speed)
-		float64 vRange;                               //voltage range for scan (scan will go from -vRange -> +vRange in the larger direction)
-		uInt64 width, height;                         //dimensions of the scan
+		float64 vRange;								  //voltage range for scan (scan will go from -vRange -> +vRange in the larger direction)
+		uInt64 width, height;						  //dimensions of the scan
 		bool snake;                                   //true/false to snake/raster
 		TaskHandle hInput, hOutput;                   //handles to input and output tasks
 		float64 sampleRate;                           //maximum device sample rate
 		uInt64 jRow;                                  //current row being collected
 		std::vector<int16> buffer;                    //working array to read rows from device buffer
 		std::vector< std::vector<int16> > frameImages;//working array to hold entire image
+
+		// chenzhe: add the following parameters
+		float64 vBlack, vWhite, maxShift, vRangeB;
+		uInt64 width_i;
+		bool delayTF;
 
 		//@brief: check a DAQmx return code and convert to an exception if needed
 		//@param error: return code to check
@@ -88,14 +95,32 @@ class ExternalScan {
 	public:
 		static int32 CVICALLBACK EveryNCallback(TaskHandle taskHandle, int32 everyNsamplesEventType, uInt32 nSamples, void *callbackData) {return reinterpret_cast<ExternalScan*>(callbackData)->readRow();}
 
-		ExternalScan(std::string x, std::string y, std::string e, uInt64 s, float64 a, uInt64 w, uInt64 h, bool sn) : xPath(x), yPath(y), etdPath(e), samples(s), vRange(a), width(w), height(h), snake(sn) {configureScan();}
-		~ExternalScan() {clearScan();}
+		//chenzhe: add width and witdh_i part.  add more inputs.
+		ExternalScan(std::string x, std::string y, std::string e, uInt64 s, float64 a, uInt64 w, uInt64 h, bool sn, float64 black, float64 white, bool dl, float64 b) : xPath(x), yPath(y), etdPath(e), samples(s), vRange(a), width(w), height(h), snake(sn), vBlack(black), vWhite(white), delayTF(dl), vRangeB(b) {
+			// externalOnOff();	// chenzhe, when constructing, first turn external on
+			width_i = width; 
+			if (delayTF){
+				width = (uInt64)(width * 1.25);
+			}
+			else{
+				width = width;
+			}
+			configureScan(); 
+		}  
+		~ExternalScan() {
+			// externalOnOff();	// chenzhe, when destructing, turn external off
+			clearScan();
+		}
 
 		//@brief: collect and image with the current parameter set and write to disk
-		void execute(std::string fileName);
+		void execute(std::string fileName, bool correct, bool saveAverageOnly, uInt64 nFrames, float64 maxShift);	// chenzhe, add input variables "correct", "saveAverageOnly", "nFrames", "maxShift", 
 };
 
 void ExternalScan::DAQmxTry(int32 error, std::string message) {
+	// chenzhe: add a display of the 'message'
+	// if (! message.empty())		std::cout << message << std::endl;
+	// chenzhe: end of modification
+
 	if(0 != error) {
 		//get error message
 		int32 buffSize = DAQmxGetExtendedErrorInfo(NULL, 0);
@@ -121,7 +146,7 @@ void ExternalScan::DAQmxTry(int32 error, std::string message) {
 
 std::vector<float64> ExternalScan::generateScanData() const {
 	//generate uniformly spaced square grid of points from -vRange -> vRange in largest direction
-	std::vector<float64> xData((size_t)width), yData((size_t)height);
+	std::vector<float64> xData((size_t)width_i), yData((size_t)height);
 	std::iota(xData.begin(), xData.end(), 0.0);
 	std::iota(yData.begin(), yData.end(), 0.0);
 	float64 scale = std::max(xData.back(), yData.back());
@@ -131,10 +156,16 @@ std::vector<float64> ExternalScan::generateScanData() const {
 	std::for_each(xData.begin(), xData.end(), [scale](float64& v){v -= scale;});//make symmetric about 0
 	scale = yData.back() / 2;
 	std::for_each(yData.begin(), yData.end(), [scale](float64& v){v -= scale;});//make symmetric about 0
-	scale = 2.0 * vRange;	
+	scale = 2.0 * vRange;
+	float64 scaleB = 2.0 * vRangeB;	// chenzhe, add scale, range in vertical direction
 	std::for_each(xData.begin(), xData.end(), [scale](float64& v){v *= scale;});//scale so limits are +/- vRange
-	std::for_each(yData.begin(), yData.end(), [scale](float64& v){v *= scale;});//scale so limits are +/- vRange
-	std::reverse(xData.begin(), xData.end());//+x voltage is left side of image
+	std::for_each(yData.begin(), yData.end(), [scaleB](float64& v){v *= scaleB;});//scale so limits are +/- vRange  // chenzhe, change scale to scaleB
+
+	for (int i = 0; i < (width-width_i); ++i){ xData.insert(xData.begin(), xData[0]); }
+	// chenzhe, I used to reverse yData instead of xData.  So I rewrite this
+	std::reverse(yData.begin(), yData.end());	// y should be reversed to get positive image
+	// std::reverse(xData.begin(), xData.end());//+x voltage is left side of image
+	// chenzhe, end of modification
 
 	//generate single pass scan
 	std::vector<float64> scan;
@@ -160,8 +191,8 @@ void ExternalScan::configureScan() {
 	clearScan();//clear existing scan if needed
 	DAQmxTry(DAQmxCreateTask("scan generation", &hOutput), "creating output task");
 	DAQmxTry(DAQmxCreateTask("etd reading", &hInput), "creating input task");
-	DAQmxTry(DAQmxCreateAOVoltageChan(hOutput, (xPath + "," + yPath).c_str(), "", -vRange, vRange, DAQmx_Val_Volts, NULL), "creating output channel");
-	DAQmxTry(DAQmxCreateAIVoltageChan(hInput, etdPath.c_str(), "", DAQmx_Val_Cfg_Default, -10.0, 10.0, DAQmx_Val_Volts, NULL), "creating input channel");
+	DAQmxTry(DAQmxCreateAOVoltageChan(hOutput, (xPath + "," + yPath).c_str(), "", -(vRange>vRangeB ? vRange : vRangeB), (vRange>vRangeB ? vRange : vRangeB), DAQmx_Val_Volts, NULL), "creating output channel");	// chenzhe, modify (-vRange, vRange) use vRange of vRangeB
+	DAQmxTry(DAQmxCreateAIVoltageChan(hInput, etdPath.c_str(), "", DAQmx_Val_Cfg_Default, vBlack, vWhite, DAQmx_Val_Volts, NULL), "creating input channel"); // chenzhe: change "-10.0, 10.0" to "vBlack, vWhite"
 
 	//get the maximum anolog input rate supported by the daq
 	DAQmxTry(DAQmxGetSampClkMaxRate(hInput, &sampleRate), "getting device maximum input frequency");
@@ -169,8 +200,8 @@ void ExternalScan::configureScan() {
 
 	//check scan rate, the microscope is limited to a 300 ns dwell at 768 x 512
 	//3.33 x factor of safety -> require at least 768 us to cover full -4 -> +4 V scan
-	const float64 minDwell = (768.0 / width) * (4.0 / vRange);//minimum dwell time in us
-	if(effectiveDwell < minDwell) throw std::runtime_error("Dwell time too short - dwell must be at least " + std::to_string(minDwell) + " us for " + std::to_string(width) + " pixel scan lines");
+	const float64 minDwell = (768.0 / width_i) * (4.0 / vRange);//minimum dwell time in us
+	if(effectiveDwell < minDwell) throw std::runtime_error("Dwell time too short - dwell must be at least " + std::to_string(minDwell) + " us for " + std::to_string(width_i) + " pixel scan lines");
 
 	//configure timing
 	const uInt64 scanPoints = width * height;
@@ -203,11 +234,13 @@ void ExternalScan::clearScan() {
 		DAQmxStopTask(hInput);
 		DAQmxClearTask(hInput);
 		hInput = NULL;
+		// std::cout << "clear input task while destructing" << std::endl;	// chenzhe, add a message for debug
 	}
 	if(NULL != hOutput) {
 		DAQmxStopTask(hOutput);
 		DAQmxClearTask(hOutput);
 		hOutput = NULL;
+		// std::cout << "clear output task while destructing" << std::endl;	// chenzhe, add a message for debug
 	}
 }
 
@@ -234,7 +267,8 @@ int32 ExternalScan::readRow() {
 	return 0;
 }
 
-void ExternalScan::execute(std::string fileName) {
+// chenzhe, add input variables "correct", "maxShift", "saveAll"
+void ExternalScan::execute(std::string fileName, bool correct, bool saveAverageOnly, uInt64 nFrames, float64 maxShift) {
 	//execute scan
 	jRow = 0;
 	DAQmxTry(DAQmxStartTask(hOutput), "starting output task");
@@ -244,24 +278,88 @@ void ExternalScan::execute(std::string fileName) {
 	float64 scanTime = float64(width * height * samples) / sampleRate + 5.0;//allow an extra 5s
 	std::cout << "imaging (expected duration ~" << scanTime - 5.0 << "s)\n";
 	DAQmxTry(DAQmxWaitUntilTaskDone(hOutput, scanTime), "waiting for output task");
-	Sleep((DWORD)(1 + (1000 * samples) / sampleRate));//give the input task enough time to be sure that it is finished
+	// chenzhe note: if too short, seems like it's missing data. So may need to increased it, such as Sleep((DWORD)(scanTime * 1000));
+	// However, if it's too long, seems like it will cause error when width is too small. --> possibly due to buffer size (Maybe only for simulated device. I'll check later)
+	Sleep((DWORD)(1 + (1000 * samples) / sampleRate)); //give the input task enough time to be sure that it is finished.
 	DAQmxTry(DAQmxStopTask(hInput), "stopping input task");
 	std::cout << '\n';
 
-	bool correct = true;
-	if(correct) {
+	// chenzhe correct image data range
+	std::vector< std::vector<uInt16> > frameImagesC(frameImages.size(), std::vector<uInt16>((size_t)width_i * height));
+	for (size_t i = 0; i < frameImages.size(); ++i){
+		// std::transform(frameImages[i].begin(), frameImages[i].end(), frameImagesC[i].begin(), [](const int16& a){return uInt16(a) + 32768; });
+		for (size_t j = 0; j < height; ++j){
+			std::transform(frameImages[i].begin() + (j + 1)*width - width_i, frameImages[i].begin() + (j + 1)*width, frameImagesC[i].begin() + j * width_i, [](const int16& a){return uInt16(a) + 32768; });
+		}
+	}
+	// chenzhe, end of Addition
+
+	// chenzhe, I want to modify the 'frameImages' into 'frameImagesC' in the following blocks.  Also, I would like to save an averaged image.  So I disabled the following part and rewrite.
+	//bool correct = true;
+	//if(correct) {
+	//	try {
+	//		//compute / apply shift
+	//		std::vector<float> shifts = correlateRows<float>(frameImages, height, width, snake, 2.0);
+	//		Tif::Write(frameImages, width, height, fileName);
+	//	} catch (std::exception_ptr e) {
+	//		Tif::Write(frameImages, (uInt32)width, (uInt32)height, fileName);//make sure that we save the data before throwing the exception
+	//		std::rethrow_exception(e);
+	//	}
+	//} else {
+	//	//write image to file
+	//	Tif::Write(frameImages, (uInt32)width, (uInt32)height, fileName);
+	//}
+	// chenzhe, end of disable.
+
+	// chenzhe, start modify
+	std::string fileNameS = fileName;
+	fileNameS.insert(fileNameS.find("."),"_stack");
+
+	width = width_i;	// change width back for saving
+	if (correct) {
 		try {
 			//compute / apply shift
-			std::vector<float> shifts = correlateRows<float>(frameImages, height, width, snake, 2.0);
-			Tif::Write(frameImages, width, height, fileName);
-		} catch (std::exception& e) {
-			Tif::Write(frameImages, (uInt32)width, (uInt32)height, fileName);//make sure that we save the data before throwing the exception
-			std::rethrow_exception(std::make_exception_ptr(e));
+			std::vector<float> shifts = correlateRows<float>(frameImagesC, height, width, snake, maxShift);	// chenzhe, change "2.0" to "maxShift"
+			
+			if(!saveAverageOnly) Tif::Write(frameImagesC, (uInt32)width, (uInt32)height, fileNameS);
+			// chenzhe: correction succesful, ignore nFrames input
+			std::cout << "correction succesful, ignore nFrames input." << std::endl;
+			nFrames = frameImagesC.size();
+			std::vector<uInt16> frameImageA((size_t)(width * height), 0);
+			for (int iPixel = 0; iPixel < (size_t)(width * height); ++iPixel){
+				for (uInt64 iLayer = frameImagesC.size() - nFrames; iLayer < frameImagesC.size(); ++iLayer){
+					frameImageA[iPixel] += frameImagesC[iLayer][iPixel] / nFrames;
+				}
+			}
+			Tif::Write(frameImageA, (uInt32)width, (uInt32)height, fileName);
 		}
-	} else {
-		//write image to file
-		Tif::Write(frameImages, (uInt32)width, (uInt32)height, fileName);
+		catch (std::exception &e) {
+
+			if (!saveAverageOnly) Tif::Write(frameImagesC, (uInt32)width, (uInt32)height, fileNameS);//make sure that we save the data before throwing the exception
+			// chenzhe: correction not succesful, average the last nFrames and save
+			std::vector<uInt16> frameImageA((size_t)(width * height), 0);
+			for (int iPixel = 0; iPixel < (size_t)(width * height); ++iPixel){
+				for (uInt64 iLayer = frameImagesC.size() - nFrames; iLayer < frameImagesC.size(); ++iLayer){
+					frameImageA[iPixel] += frameImagesC[iLayer][iPixel] / nFrames;
+				}
+			}
+			Tif::Write(frameImageA, (uInt32)width, (uInt32)height, fileName);
+			std::rethrow_exception(std::make_exception_ptr(e));	// chenzhe: change "e" to "std::make_exception_ptr(e)"
+		}
 	}
+	else {
+		//write image to file
+		if (!saveAverageOnly) Tif::Write(frameImagesC, (uInt32)width, (uInt32)height, fileNameS);
+		
+		std::vector<uInt16> frameImageA((size_t)(width * height),0);
+		for (int iPixel = 0; iPixel < (size_t)(width * height); ++iPixel){
+			for (uInt64 iLayer = frameImagesC.size() - nFrames; iLayer < frameImagesC.size(); ++iLayer){
+				frameImageA[iPixel] += frameImagesC[iLayer][iPixel] / nFrames;
+			}
+		}
+		Tif::Write(frameImageA, (uInt32)width, (uInt32)height, fileName);
+	}
+	// chenzhe, end of modify
 }
 
 #endif
