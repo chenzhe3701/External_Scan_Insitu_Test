@@ -17,6 +17,7 @@
 #include <sstream>
 #pragma comment(lib, "winmm.lib")  
 
+// This function returns a frequency if it's >999Hz, (has to be < 5000Hz), and is multiples of 4Hz.
 int detectFrequency(){
 
 	HWAVEIN hWaveIn;		// input device handle
@@ -151,7 +152,7 @@ void simMouseClick(int x, int y)
 	Sleep(200);
 }
 void externalOnOff(){
-	HWND hwnd = FindWindow(NULL, L"Microscope Control v7.6.1   User: supervisor");
+	HWND hwnd = FindWindow(NULL, L"Microscope Control v7.6.1   User: supervisor");	// consider use unicode characterset for the settings to compile
 	if (hwnd) {
 		SetForegroundWindow(hwnd);
 		Sleep(1000);
