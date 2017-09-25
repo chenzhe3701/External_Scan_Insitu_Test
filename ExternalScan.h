@@ -198,7 +198,7 @@ void ExternalScan::configureScan() {
 
 	//check scan rate, the microscope is limited to a 300 ns dwell at 768 x 512
 	//3.33 x factor of safety -> require at least 768 us to cover full -4 -> +4 V scan
-	const float64 minDwell = (768.0 / width_i) * (4.0 / vRange);//minimum dwell time in us
+	const float64 minDwell = (768.0 / width_i) * (4.0 / vRange);//minimum dwell time in us.  vRange correspond to the lineScan direction, so vRangeB shouldn't affect this.
 	if(effectiveDwell < minDwell) throw std::runtime_error("Dwell time too short - dwell must be at least " + std::to_string(minDwell) + " us for " + std::to_string(width_i) + " pixel scan lines");
 
 	//configure timing
