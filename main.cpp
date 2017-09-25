@@ -158,7 +158,7 @@ int main(int argc, char *argv[]) {
 				iR = frequency / 100;
 				iC = (frequency - 100 * iR) / 4;
 				output = output_raw + "_r" + std::to_string(iR) + "c" + std::to_string(iC) + ".tif";
-				if (iR > 29) return EXIT_SUCCESS;	// stop by sending a >=3000Hz sound. Or iC >= 25.
+				if (iR > 19) return EXIT_SUCCESS;	// stop by sending a >=3000Hz sound. Or iR >= 20.
 			}
 			else{
 				output = output_raw;
