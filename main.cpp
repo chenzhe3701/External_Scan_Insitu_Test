@@ -45,8 +45,8 @@ int main(int argc, char *argv[]) {
 		std::string yPath = "dev2/ao1";
 		std::string ePath = "dev2/ai2";
 		std::string output = "";
-		float64 scanVoltage = 3.86;	//horizontal voltage
-		float64 scanVoltageB = 3.9;	//vertical voltage
+		float64 scanVoltageH = 3.86;	//horizontal voltage
+		float64 scanVoltageV = 3.9;	//vertical voltage
 		uInt64 samples = 2;
 
 		bool snake = true;
@@ -71,8 +71,8 @@ int main(int argc, char *argv[]) {
 		ss << "\t -y : path to Y analog out channel (defaults to " << yPath << ")\n";
 		ss << "\t -e : path to ETD analog in channel (defaults to " << ePath << ")\n";
 		ss << "\t -s : samples per pixel (defaults to " << samples << ")\n";
-		ss << "\t -a : half amplitude of scan in volts, horizontal (defaults to " << scanVoltage << ")\n";
-		ss << "\t -b : half amplitude of scan in volts, vertical (defaults to " << scanVoltageB << ")\n";
+		ss << "\t -a : half amplitude of scan in volts, horizontal (defaults to " << scanVoltageH << ")\n";
+		ss << "\t -b : half amplitude of scan in volts, vertical (defaults to " << scanVoltageV << ")\n";
 		ss << "\t -o : output image name (tif format) (defaults to " << output << ")\n";
 		ss << "\t[-w]: scan width in pixels (defaults to " << width << ")\n";
 		ss << "\t[-h]: scan height in pixels (defaults to " << height << ")\n";
@@ -108,7 +108,7 @@ int main(int argc, char *argv[]) {
 				case 'y': yPath = std::string(argv[i + 1]); break;
 				case 'e': ePath = std::string(argv[i + 1]); break;
 				case 's': samples = atoi(argv[i + 1]); break;
-				case 'a': scanVoltage = atof(argv[i + 1]); break;
+				case 'a': scanVoltageH = atof(argv[i + 1]); break;
 				case 'o': {
 					output = std::string(argv[i + 1]);
 					output_raw = output;
@@ -126,7 +126,7 @@ int main(int argc, char *argv[]) {
 				case 'v': saveAverageOnly = atoi(argv[i + 1]); break;
 				case 'n': nFrames = atoi(argv[i + 1]); break;
 				case 'd': delayTF = atoi(argv[i + 1]); break;
-				case 'b': scanVoltageB = atof(argv[i + 1]); break;
+				case 'b': scanVoltageV = atof(argv[i + 1]); break;
 				case 'p': autoLoop = atoi(argv[i + 1]); break;
 				}
 				if (requiresOption) ++i;//double increment if the next agrument isn't a flag
@@ -142,10 +142,10 @@ int main(int argc, char *argv[]) {
 		if (yPath.empty()) throw std::runtime_error(ss.str() + "(y flag missing)\n");
 		if (ePath.empty()) throw std::runtime_error(ss.str() + "(e flag missing)\n");
 		if (output.empty()) throw std::runtime_error(ss.str() + "(o flag missing)\n");
-		if (0.0 == scanVoltage) throw std::runtime_error(ss.str() + "(a flag missing or empty)\n");
-		if (0.0 == scanVoltageB) throw std::runtime_error(ss.str() + "(b flag missing or empty)\n");
-		if (scanVoltage > maxVoltage) throw std::runtime_error(ss.str() + "(scan amplitude is too large - passed " + std::to_string(scanVoltage) + ", max " + std::to_string(maxVoltage) + ")\n");
-		if (scanVoltageB > maxVoltage) throw std::runtime_error(ss.str() + "(scan amplitude is too large - passed " + std::to_string(scanVoltage) + ", max " + std::to_string(maxVoltage) + ")\n");
+		if (0.0 == scanVoltageH) throw std::runtime_error(ss.str() + "(a flag missing or empty)\n");
+		if (0.0 == scanVoltageV) throw std::runtime_error(ss.str() + "(b flag missing or empty)\n");
+		if (scanVoltageH > maxVoltage) throw std::runtime_error(ss.str() + "(scan amplitude is too large - passed " + std::to_string(scanVoltageH) + ", max " + std::to_string(maxVoltage) + ")\n");
+		if (scanVoltageV > maxVoltage) throw std::runtime_error(ss.str() + "(scan amplitude is too large - passed " + std::to_string(scanVoltageV) + ", max " + std::to_string(maxVoltage) + ")\n");
 
 		// chenzhe, detectFrequency and do the scanning
 		int iR = 0;
@@ -166,7 +166,7 @@ int main(int argc, char *argv[]) {
 			}
 
 			//create scan opject
-			ExternalScan scan(xPath, yPath, ePath, samples, scanVoltage, width, height, snake, vBlack, vWhite, delayTF, scanVoltageB);
+			ExternalScan scan(xPath, yPath, ePath, samples, scanVoltageH, width, height, snake, vBlack, vWhite, delayTF, scanVoltageV);
 
 			//execute scan and write image
 			std::time_t start = std::time(NULL);
