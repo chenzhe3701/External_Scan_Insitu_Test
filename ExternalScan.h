@@ -66,7 +66,7 @@ private:
 	TaskHandle hInput, hOutput;                   //handles to input and output tasks
 	float64 sampleRate;                           //maximum device sample rate
 	uInt64 iRow;                                  //current row being collected
-	uInt64 iFrame;									// current frame being collected
+	//uInt64 iFrame;									// current frame being collected
 	std::vector<int16> buffer;                    //working array to read rows from device buffer
 
 	std::vector<std::vector<std::vector<std::vector<int16> > > > frameImagesRaw;		// working array to hold entire frame, [nLineInt][nRS][nDwellSamples] pages of vector(height x width)
@@ -251,6 +251,7 @@ void ExternalScan::configureScan() {
 
 	//get the maximum anolog input rate supported by the daq
 	DAQmxTry(DAQmxGetSampClkMaxRate(hInput, &sampleRate), "getting device maximum input frequency");
+	sampleRate = 1000000;	// Note: sometimes reduce the sample rate can affect the error "writing scan to buffer".
 	const float64 effectiveDwell = (1000000.0 * nDwellSamples) / sampleRate;
 
 	//check scan rate, the microscope is limited to a 300 ns dwell at 768 x 512
@@ -275,7 +276,6 @@ void ExternalScan::configureScan() {
 
 	//write scan data to device buffer
 	int32 written;
-	// std::vector<float64> scan = generateScanData();
 	DAQmxTry(DAQmxWriteAnalogF64(hOutput, (int32)scanPoints, FALSE, DAQmx_Val_WaitInfinitely, DAQmx_Val_GroupByChannel, scanData.data(), &written, NULL), "writing scan to buffer");
 	if (scanPoints != written) throw std::runtime_error("failed to write all scan data to buffer");
 
@@ -334,7 +334,6 @@ void ExternalScan::execute(std::string fileName,bool saveAverageOnly, float64 ma
 	for (int iFrameInt = 0; iFrameInt < nFrameInt; ++iFrameInt){
 		configureScan();
 		//execute scan
-		iFrame = iFrameInt;
 		iRow = 0;
 		DAQmxTry(DAQmxStartTask(hOutput), "starting output task");
 		DAQmxTry(DAQmxStartTask(hInput), "starting input task");
@@ -343,7 +342,7 @@ void ExternalScan::execute(std::string fileName,bool saveAverageOnly, float64 ma
 		float64 scanTime = float64(width_m * height * nDwellSamples * nRS * nLineInt) / sampleRate + 5.0;//allow an extra 5s
 		std::cout << "imaging (expected duration ~" << scanTime - 5.0 << "s)\n";
 		//DAQmxTry(DAQmxWaitUntilTaskDone(hOutput, scanTime), "waiting for output task");
-		DAQmxWaitUntilTaskDone(hOutput, scanTime);	// just wait.  dUsing DAQmxTry is not good, maybe returns too early.
+		DAQmxWaitUntilTaskDone(hOutput, DAQmx_Val_WaitInfinitely);	// just wait.  dUsing DAQmxTry is not good, maybe returns too early.
 		//Sleep((DWORD)(1 + (1000 * nDwellSamples) / sampleRate)); //give the input task enough time to be sure that it is finished.
 		
 		DAQmxTry(DAQmxStopTask(hInput), "stopping input task");		
@@ -357,10 +356,10 @@ void ExternalScan::execute(std::string fileName,bool saveAverageOnly, float64 ma
 						if (0 == iRS){
 							size_t ind = iLineInt*nRS*nDwellSamples + iRS*nDwellSamples + iDS;
 							// Because sometimes we use a dealy, we need to process the data row-by-row instead of just copying the whole directly:
-							// std::transform(frameImagesRaw[i].begin(), frameImagesRaw[i].end(), frameImagesDL[iFrame].begin(), [](const int16& a){return uInt16(a) + 32768; });
+							// std::transform(frameImagesRaw[i].begin(), frameImagesRaw[i].end(), frameImagesDL[iFrameInt].begin(), [](const int16& a){return uInt16(a) + 32768; });
 							for (size_t j = 0; j < height; ++j){
 								std::transform(frameImagesRaw[iLineInt][iRS][iDS].begin() + j*width_m + (width_m - width) / 2, frameImagesRaw[iLineInt][iRS][iDS].begin() + j*width_m + (width_m + width) / 2,
-									frameImagesD[iFrame][ind].begin() + j * width, [](const int16& a){return uInt16(a) + 32768; });
+									frameImagesD[iFrameInt][ind].begin() + j * width, [](const int16& a){return uInt16(a) + 32768; });
 							}
 						}
 						else{
@@ -368,7 +367,7 @@ void ExternalScan::execute(std::string fileName,bool saveAverageOnly, float64 ma
 							size_t ind = iLineInt*nRS*nDwellSamples + iRS*nDwellSamples + (nDwellSamples - 1) - iDS;
 							for (size_t j = 0; j < height; ++j){
 								std::transform(frameImagesRaw[iLineInt][iRS][iDS].rbegin() + j*width_m + (width_m - width) / 2, frameImagesRaw[iLineInt][iRS][iDS].rbegin() + j*width_m + (width_m + width) / 2,
-									frameImagesD[iFrame][ind].begin() + j * width, [](const int16& a){return uInt16(a) + 32768; });
+									frameImagesD[iFrameInt][ind].begin() + j * width, [](const int16& a){return uInt16(a) + 32768; });
 							}
 						}
 					}
@@ -377,7 +376,7 @@ void ExternalScan::execute(std::string fileName,bool saveAverageOnly, float64 ma
 						// This is for raster, i.e., not backward scan
 						for (size_t j = 0; j < height; ++j){
 							std::transform(frameImagesRaw[iLineInt][iRS][iDS].begin() + j*width_m + width_m - width, frameImagesRaw[iLineInt][iRS][iDS].begin() + j*width_m + width_m, 
-								frameImagesD[iFrame][ind].begin() + j * width, [](const int16& a){return uInt16(a) + 32768; });
+								frameImagesD[iFrameInt][ind].begin() + j * width, [](const int16& a){return uInt16(a) + 32768; });
 						}
 					}
 				}
@@ -392,7 +391,7 @@ void ExternalScan::execute(std::string fileName,bool saveAverageOnly, float64 ma
 		for (size_t iLineInt = 0; iLineInt < nLineInt; ++iLineInt){
 			// copy each LineInt to a temp vector (nRS = either 1 or 2,)
 			std::vector<std::vector<uInt16> > tempV(nRS*nDwellSamples, std::vector<uInt16>((size_t)width*height));
-			std::vector<std::vector<uInt16> >::iterator it = frameImagesD[iFrame].begin();
+			std::vector<std::vector<uInt16> >::iterator it = frameImagesD[iFrameInt].begin();
 			std::copy(it + iLineInt*nRS*nDwellSamples, it + iLineInt*nRS*nDwellSamples + nRS*nDwellSamples, tempV.begin());
 			// apply shift correction
 			if (correctTF){
@@ -413,7 +412,7 @@ void ExternalScan::execute(std::string fileName,bool saveAverageOnly, float64 ma
 
 		for (int iPixel = 0; iPixel < (size_t)(width * height); ++iPixel){
 			for (uInt64 iLineInt = 0; iLineInt < nLineInt; ++iLineInt){
-				frameImagesF[iFrame][iPixel] += frameImagesL[iLineInt][iPixel] / nLineInt;
+				frameImagesF[iFrameInt][iPixel] += frameImagesL[iLineInt][iPixel] / nLineInt;
 			}
 		}
 	}
@@ -421,8 +420,8 @@ void ExternalScan::execute(std::string fileName,bool saveAverageOnly, float64 ma
 
 	// average frameimagesP into frameImagesA
 	for (int iPixel = 0; iPixel < (size_t)(width * height); ++iPixel){
-		for (uInt64 iFrame = 0; iFrame < nFrameInt; ++iFrame){
-			frameImagesA[iPixel] += frameImagesF[iFrame][iPixel] / nFrameInt;
+		for (uInt64 iFrameInt = 0; iFrameInt < nFrameInt; ++iFrameInt){
+			frameImagesA[iPixel] += frameImagesF[iFrameInt][iPixel] / nFrameInt;
 		}
 	}
 
