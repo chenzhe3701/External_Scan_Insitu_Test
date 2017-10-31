@@ -56,11 +56,11 @@ int main(int argc, char *argv[]) {
 
 		float64 vBlack = -1.25;			//voltage for black
 		float64 vWhite = 1.75;			//voltage for whilte
-		bool correct = true;			//use fft to correct
 		bool saveAverageOnly = true;	//whether to save averaged figure ony
-		uInt64 nFrames = 2;				//frames from last to integrate
+		bool correctTF = true;
+		uInt64 nFrames = 4;				// frame integration.
+		uInt64 nLines = 2;				// line integration.
 		float64 maxShift = 10.0;		//maximum pixel shift to correct
-		bool delayTF = 1;				//whether to use dealy at left edge
 		uInt64 autoLoop = 0;			//whether use this code to do an auto image test with iFast
 		std::string output_raw;			// records the raw output name
 
@@ -81,11 +81,11 @@ int main(int argc, char *argv[]) {
 		ss << "\t[-k]: voltage for black pixel (defaults to " << vBlack << ")\n";
 		ss << "\t[-i]: voltage for white pixel (defaults to " << vWhite << ")\n";
 		ss << "\t[-f]: max number of pixels to shift (defaults to " << maxShift << ")\n";
-		ss << "\t[-c]: correct frames or not (defaults to " << correct << ")\n";
 		ss << "\t[-v]: save averaged image only (defaults to " << saveAverageOnly << ")\n";
-		ss << "\t[-n]: # of frames from last to integrate (defaults to " << nFrames << ")\n";
-		ss << "\t[-d]: delay to compensate for distortion at left edge (defaults to " << delayTF << ")\n";
+		ss << "\t[-n]: # of frames to integrate (defaults to " << nFrames << ")\n";
+		ss << "\t[-l]: # of lines to integrate (defaults to " << nLines << ")\n";
 		ss << "\t[-p]: autoLoop until stop signal (3000Hz) and auto fileName, default = " << autoLoop << ")\n";
+		ss << "\t[-c]: correct using FFT or not, default = " << correctTF << ")\n";
 
 		//parse arguments
 		for (int i = 1; i < argc; i++) {
@@ -118,22 +118,17 @@ int main(int argc, char *argv[]) {
 				case 'h': height = atoi(argv[i + 1]); break;
 				case 'r': snake = false; break;
 				case 't': timeLog = std::string(argv[i + 1]); break;
-
+				case 'c': correctTF = atoi(argv[i + 1]); break;
 				case 'k': vBlack = atof(argv[i + 1]); break;
 				case 'i': vWhite = atof(argv[i + 1]); break;
 				case 'f': maxShift = atof(argv[i + 1]); break;
-				case 'c': correct = atoi(argv[i + 1]); break;
 				case 'v': saveAverageOnly = atoi(argv[i + 1]); break;
 				case 'n': nFrames = atoi(argv[i + 1]); break;
-				case 'd': delayTF = atoi(argv[i + 1]); break;
+				case 'l': nLines = atoi(argv[i + 1]); break;
 				case 'b': scanVoltageV = atof(argv[i + 1]); break;
 				case 'p': autoLoop = atoi(argv[i + 1]); break;
 				}
 				if (requiresOption) ++i;//double increment if the next agrument isn't a flag
-			}
-			if (nFrames > dwellSamples){
-				std::cout << "nFrames > dwellSamples found, so just use the latter value" << std::endl;
-				nFrames = dwellSamples;
 			}
 		}
 
@@ -166,11 +161,11 @@ int main(int argc, char *argv[]) {
 			}
 
 			//create scan opject
-			ExternalScan scan(xPath, yPath, ePath, dwellSamples, scanVoltageH, width, height, snake, vBlack, vWhite, delayTF, scanVoltageV);
+			ExternalScan scan(xPath, yPath, ePath, dwellSamples, scanVoltageH, scanVoltageV, width, height, snake, vBlack, vWhite, nLines, nFrames);
 
 			//execute scan and write image
 			std::time_t start = std::time(NULL);
-			scan.execute(output, correct, saveAverageOnly, nFrames, maxShift);
+			scan.execute(output, saveAverageOnly, maxShift, correctTF);
 			std::time_t end = std::time(NULL);
 
 			//append time stamps to log if needed
