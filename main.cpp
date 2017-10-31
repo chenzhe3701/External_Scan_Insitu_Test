@@ -47,7 +47,7 @@ int main(int argc, char *argv[]) {
 		std::string output = "";
 		float64 scanVoltageH = 3.86;	//horizontal voltage
 		float64 scanVoltageV = 3.9;	//vertical voltage
-		uInt64 samples = 2;
+		uInt64 dwellSamples = 2;
 
 		bool snake = true;
 		std::string timeLog = "d:\\timgLog.txt";
@@ -58,7 +58,7 @@ int main(int argc, char *argv[]) {
 		float64 vWhite = 1.75;			//voltage for whilte
 		bool correct = true;			//use fft to correct
 		bool saveAverageOnly = true;	//whether to save averaged figure ony
-		uInt64 nFrames = 8;				//frames from last to integrate
+		uInt64 nFrames = 2;				//frames from last to integrate
 		float64 maxShift = 10.0;		//maximum pixel shift to correct
 		bool delayTF = 1;				//whether to use dealy at left edge
 		uInt64 autoLoop = 0;			//whether use this code to do an auto image test with iFast
@@ -66,11 +66,11 @@ int main(int argc, char *argv[]) {
 
 		//build help string
 		std::stringstream ss;
-		ss << "usage: " + std::string(argv[0]) + " -x path -y path -e path -s samples -a voltage -o file [-w width] [-h height] [-r] [-t file]\n";
+		ss << "usage: " + std::string(argv[0]) + " -x path -y path -e path -s dwellSamples -a voltage -o file [-w width] [-h height] [-r] [-t file]\n";
 		ss << "\t -x : path to X analog out channel (e.g. 'Dev0/ao0') (defaults to " << xPath << ")\n";
 		ss << "\t -y : path to Y analog out channel (defaults to " << yPath << ")\n";
 		ss << "\t -e : path to ETD analog in channel (defaults to " << ePath << ")\n";
-		ss << "\t -s : samples per pixel (defaults to " << samples << ")\n";
+		ss << "\t -s : dwellSamples per pixel (defaults to " << dwellSamples << ")\n";
 		ss << "\t -a : half amplitude of scan in volts, horizontal (defaults to " << scanVoltageH << ")\n";
 		ss << "\t -b : half amplitude of scan in volts, vertical (defaults to " << scanVoltageV << ")\n";
 		ss << "\t -o : output image name (tif format) (defaults to " << output << ")\n";
@@ -107,7 +107,7 @@ int main(int argc, char *argv[]) {
 				case 'x': xPath = std::string(argv[i + 1]); break;
 				case 'y': yPath = std::string(argv[i + 1]); break;
 				case 'e': ePath = std::string(argv[i + 1]); break;
-				case 's': samples = atoi(argv[i + 1]); break;
+				case 's': dwellSamples = atoi(argv[i + 1]); break;
 				case 'a': scanVoltageH = atof(argv[i + 1]); break;
 				case 'o': {
 					output = std::string(argv[i + 1]);
@@ -131,9 +131,9 @@ int main(int argc, char *argv[]) {
 				}
 				if (requiresOption) ++i;//double increment if the next agrument isn't a flag
 			}
-			if (nFrames > samples){
-				std::cout << "nFrames > samples found, so just use the latter value" << std::endl;
-				nFrames = samples;
+			if (nFrames > dwellSamples){
+				std::cout << "nFrames > dwellSamples found, so just use the latter value" << std::endl;
+				nFrames = dwellSamples;
 			}
 		}
 
@@ -166,7 +166,7 @@ int main(int argc, char *argv[]) {
 			}
 
 			//create scan opject
-			ExternalScan scan(xPath, yPath, ePath, samples, scanVoltageH, width, height, snake, vBlack, vWhite, delayTF, scanVoltageV);
+			ExternalScan scan(xPath, yPath, ePath, dwellSamples, scanVoltageH, width, height, snake, vBlack, vWhite, delayTF, scanVoltageV);
 
 			//execute scan and write image
 			std::time_t start = std::time(NULL);
@@ -190,7 +190,7 @@ int main(int argc, char *argv[]) {
 				of << output << "\t" << startTime.data() << "\t" << start << "\t" << endTime.data() << "\t" << end << "\n";
 			}
 
-			Beep(3000, 10000);	// beep to let MPC know scan finished
+			//Beep(3000, 10000);	// beep to let MPC know scan finished
 		}
 	}
 	catch (std::exception& e) {
