@@ -74,7 +74,7 @@ private:
 	std::vector<std::vector<uInt16> > frameImagesF;		// has nFrame pages
 	std::vector<uInt16> frameImagesA;						// one page holding the average value
 
-	
+
 	uInt64 nRS;			// A parameter affected by raster/snake.  nRS=2 if raster, we have an additional nDwellSamples layers of image in the reverse scan direction
 	uInt64 nLineInt;	// number for line integration
 	uInt64 nFrameInt;	// number for frame integration
@@ -134,7 +134,7 @@ public:
 			nRS = 1;
 		}
 		scanData = generateScanData();
-		
+
 		frameImagesD.assign(nFrameInt, std::vector<std::vector<uInt16> >(nLineInt*nRS*nDwellSamples, std::vector<uInt16>((size_t)width * height)));
 		frameImagesF.assign(nFrameInt, std::vector<uInt16>((size_t)width*height));
 		frameImagesA.assign((size_t)width * height, 0);
@@ -256,7 +256,7 @@ void ExternalScan::configureScan() {
 
 	//check scan rate, the microscope is limited to a 300 ns dwell at 768 x 512
 	//3.33 x factor of safety -> require at least 768 us to cover full -4 -> +4 V scan
-	const float64 minDwell = (768.0 / width_m) * (4.0 / ((vRangeH>vRangeV ? vRangeH : vRangeV)*factorT));	//minimum dwell time in us.  vRangeH correspond to the lineScan direction, so vRangeV shouldn't affect this.
+	const float64 minDwell = (768.0 / width_m) * (4.0 / ((vRangeH > vRangeV ? vRangeH : vRangeV)*factorT));	//minimum dwell time in us.  vRangeH correspond to the lineScan direction, so vRangeV shouldn't affect this.
 	if (effectiveDwell < minDwell) throw std::runtime_error("Dwell time too short - dwell must be at least " + std::to_string(minDwell) + " us for " + std::to_string(width) + " pixel scan lines");
 
 	//configure timing
@@ -309,7 +309,7 @@ int32 ExternalScan::readRow() {
 
 	for (uInt64 iLineInt = 0; iLineInt < nLineInt; ++iLineInt){
 		for (uInt64 iRS = 0; iRS < nRS; ++iRS){
-			if (snake && (1==iRS)) {
+			if (snake && (1 == iRS)) {
 				const uInt64 rowOffset = width_m * iRow + width_m - 1;	//offset of row end
 				for (uInt64 iDwellSamples = 0; iDwellSamples < nDwellSamples; iDwellSamples++)
 					for (uInt64 iCol = 0; iCol < width_m; iCol++)
@@ -330,7 +330,7 @@ int32 ExternalScan::readRow() {
 	return 0;
 }
 
-void ExternalScan::execute(std::string fileName,bool saveAverageOnly, float64 maxShift, bool correctTF) {
+void ExternalScan::execute(std::string fileName, bool saveAverageOnly, float64 maxShift, bool correctTF) {
 	for (int iFrameInt = 0; iFrameInt < nFrameInt; ++iFrameInt){
 		configureScan();
 		//execute scan
@@ -344,8 +344,8 @@ void ExternalScan::execute(std::string fileName,bool saveAverageOnly, float64 ma
 		//DAQmxTry(DAQmxWaitUntilTaskDone(hOutput, scanTime), "waiting for output task");
 		DAQmxWaitUntilTaskDone(hOutput, DAQmx_Val_WaitInfinitely);	// just wait.  dUsing DAQmxTry is not good, maybe returns too early.
 		//Sleep((DWORD)(1 + (1000 * nDwellSamples) / sampleRate)); //give the input task enough time to be sure that it is finished.
-		
-		DAQmxTry(DAQmxStopTask(hInput), "stopping input task");		
+
+		DAQmxTry(DAQmxStopTask(hInput), "stopping input task");
 		std::cout << '\n';
 
 		// Correct image data range to 0-65535 value range
@@ -366,7 +366,11 @@ void ExternalScan::execute(std::string fileName,bool saveAverageOnly, float64 ma
 							// flip image, and store backwards, if it is a snake scan [Reverse !!!]
 							size_t ind = iLineInt*nRS*nDwellSamples + iRS*nDwellSamples + (nDwellSamples - 1) - iDS;
 							for (size_t j = 0; j < height; ++j){
-								std::transform(frameImagesRaw[iLineInt][iRS][iDS].rbegin() + j*width_m + (width_m - width) / 2, frameImagesRaw[iLineInt][iRS][iDS].rbegin() + j*width_m + (width_m + width) / 2,
+								// should be like this, but iterator is not reverse
+								//std::transform(frameImagesRaw[iLineInt][iRS][iDS].begin() + j*width_m + (width_m + width) / 2, frameImagesRaw[iLineInt][iRS][iDS].begin() + j*width_m + (width_m - width) / 2,
+								//	frameImagesD[iFrameInt][ind].begin() + j * width, [](const int16& a){return uInt16(a) + 32768; });
+								std::transform(frameImagesRaw[iLineInt][iRS][iDS].rbegin() + frameImagesRaw[iLineInt][iRS][iDS].size() - 1 - (j*width_m + (width_m + width) / 2),
+									frameImagesRaw[iLineInt][iRS][iDS].rbegin() + frameImagesRaw[iLineInt][iRS][iDS].size() - 1 - (j*width_m + (width_m - width) / 2),
 									frameImagesD[iFrameInt][ind].begin() + j * width, [](const int16& a){return uInt16(a) + 32768; });
 							}
 						}
@@ -375,7 +379,7 @@ void ExternalScan::execute(std::string fileName,bool saveAverageOnly, float64 ma
 						size_t ind = iLineInt*nRS*nDwellSamples + iRS*nDwellSamples + iDS;
 						// This is for raster, i.e., not backward scan
 						for (size_t j = 0; j < height; ++j){
-							std::transform(frameImagesRaw[iLineInt][iRS][iDS].begin() + j*width_m + width_m - width, frameImagesRaw[iLineInt][iRS][iDS].begin() + j*width_m + width_m, 
+							std::transform(frameImagesRaw[iLineInt][iRS][iDS].begin() + j*width_m + width_m - width, frameImagesRaw[iLineInt][iRS][iDS].begin() + j*width_m + width_m,
 								frameImagesD[iFrameInt][ind].begin() + j * width, [](const int16& a){return uInt16(a) + 32768; });
 						}
 					}
@@ -383,7 +387,7 @@ void ExternalScan::execute(std::string fileName,bool saveAverageOnly, float64 ma
 			}
 		}
 	}
-	
+
 	for (size_t iFrameInt = 0; iFrameInt < nFrameInt; ++iFrameInt){
 		// need to apply average between these lineInts.  Backward scan already reversed and repositioned, so it's the same line integration.
 		std::vector< std::vector<uInt16> > frameImagesL(nLineInt, std::vector<uInt16>((size_t)width * height));	// temp for all the lineInt images under this frame
@@ -414,6 +418,13 @@ void ExternalScan::execute(std::string fileName,bool saveAverageOnly, float64 ma
 			for (uInt64 iLineInt = 0; iLineInt < nLineInt; ++iLineInt){
 				frameImagesF[iFrameInt][iPixel] += frameImagesL[iLineInt][iPixel] / nLineInt;
 			}
+		}
+
+		if (!saveAverageOnly) {
+			std::string fileNameL = fileName;
+			fileNameL.insert(fileNameL.find("."), std::to_string(iFrameInt));
+			fileNameL.insert(fileNameL.find("."), "_LineInFrame");
+			Tif::Write(frameImagesL, (uInt32)width, (uInt32)height, fileNameL);
 		}
 	}
 

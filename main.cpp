@@ -60,7 +60,7 @@ int main(int argc, char *argv[]) {
 		bool correctTF = true;
 		uInt64 nFrames = 4;				// frame integration.
 		uInt64 nLines = 2;				// line integration.
-		float64 maxShift = 10.0;		//maximum pixel shift to correct
+		float64 maxShift = 20.0;		//maximum pixel shift to correct
 		uInt64 autoLoop = 0;			//whether use this code to do an auto image test with iFast
 		std::string output_raw;			// records the raw output name
 
