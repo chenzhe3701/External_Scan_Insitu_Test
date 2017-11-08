@@ -126,11 +126,11 @@ public:
 
 		// externalOnOff();	// chenzhe, when constructing, first turn external on
 		if (snake){
-			width_m = width + 2 * (uInt64)(width * 0.01);
+			width_m = width + 2 * (uInt64)(width * 0.01);	// I think if > 0.05, it becomes very dangerous !!!
 			nRS = 2;
 		}
 		else{
-			width_m = width + 2 * (uInt64)(width * 0.01);
+			width_m = width + 2 * (uInt64)(width * 0.06);
 			nRS = 1;
 		}
 		scanData = generateScanData();
@@ -193,17 +193,18 @@ std::vector<float64> ExternalScan::generateScanData() const {
 	std::for_each(xData.begin(), xData.end(), [scaleX](float64& v){v *= scaleX; });//scale so limits are +/- vRangeH
 	std::for_each(yData.begin(), yData.end(), [scaleY](float64& v){v *= scaleY; });//scale so limits are +/- vRangeV
 
-	float64 d1 = xData[1] - xData[0];
+	float64 d1 = (xData[1] - xData[0])/4;
 	// If snake, insert at begin&end.  If raster, only insert at begin.
 	for (int i = 0; i < (width_m - width) / 2; ++i){
-		xData.insert(xData.begin(), *(xData.begin()) - d1);
+		xData.insert(xData.begin(), xData.front() - d1);
 		if (snake){
-			xData.insert(xData.end(), *(xData.begin()) + d1);
+			xData.insert(xData.end(), xData.back() + d1);
 		}
 		else{
-			xData.insert(xData.begin(), *(xData.begin()) - d1);
+			xData.insert(xData.begin(), xData.front() - d1);
 		}
 	}
+	std::cout << xData.front() << ",," << xData.back();
 	std::reverse(yData.begin(), yData.end());	// y should be reversed to get positive image
 
 	//generate single pass scan, double the data if we always use snake.  If use raster, do not double.
@@ -240,7 +241,7 @@ std::vector<float64> ExternalScan::generateScanData() const {
 }
 
 void ExternalScan::configureScan() {
-	float factorT = 1.04;	// just a factor
+	float factorT = 1.2;	// just a factor
 	//create tasks and channels
 	clearScan();//clear existing scan if needed
 	DAQmxTry(DAQmxCreateTask("scan generation", &hOutput), "creating output task");
@@ -299,7 +300,7 @@ void ExternalScan::clearScan() {
 	}
 }
 
-// For the output image, this looks like read 'one' row. For the raw image, read 'one' row if 'raster', read 'two' rows if 'snake'
+// Whether raster or snake, after readrow, the image is positive.  No backward lines.
 int32 ExternalScan::readRow() {
 	int32 read;
 	DAQmxTry(DAQmxReadBinaryI16(hInput, (int32)buffer.size(), DAQmx_Val_WaitInfinitely, DAQmx_Val_GroupByChannel, buffer.data(), (uInt32)buffer.size(), &read, NULL), "reading data from buffer");
@@ -353,27 +354,23 @@ void ExternalScan::execute(std::string fileName, bool saveAverageOnly, float64 m
 			for (size_t iRS = 0; iRS < nRS; ++iRS){
 				for (size_t iDS = 0; iDS < nDwellSamples; iDS++){
 					if (snake){
+						// No need to flip image anymore, because its already done in readrow().  Just need to reorder the page # (the 'ind' value here) 
+						size_t ind;
 						if (0 == iRS){
-							size_t ind = iLineInt*nRS*nDwellSamples + iRS*nDwellSamples + iDS;
-							// Because sometimes we use a dealy, we need to process the data row-by-row instead of just copying the whole directly:
-							// std::transform(frameImagesRaw[i].begin(), frameImagesRaw[i].end(), frameImagesDL[iFrameInt].begin(), [](const int16& a){return uInt16(a) + 32768; });
-							for (size_t j = 0; j < height; ++j){
-								std::transform(frameImagesRaw[iLineInt][iRS][iDS].begin() + j*width_m + (width_m - width) / 2, frameImagesRaw[iLineInt][iRS][iDS].begin() + j*width_m + (width_m + width) / 2,
-									frameImagesD[iFrameInt][ind].begin() + j * width, [](const int16& a){return uInt16(a) + 32768; });
-							}
+							ind = iLineInt*nRS*nDwellSamples + iRS*nDwellSamples + iDS;
 						}
 						else{
-							// flip image, and store backwards, if it is a snake scan [Reverse !!!]
-							size_t ind = iLineInt*nRS*nDwellSamples + iRS*nDwellSamples + (nDwellSamples - 1) - iDS;
-							for (size_t j = 0; j < height; ++j){
-								// should be like this, but iterator is not reverse
-								//std::transform(frameImagesRaw[iLineInt][iRS][iDS].begin() + j*width_m + (width_m + width) / 2, frameImagesRaw[iLineInt][iRS][iDS].begin() + j*width_m + (width_m - width) / 2,
-								//	frameImagesD[iFrameInt][ind].begin() + j * width, [](const int16& a){return uInt16(a) + 32768; });
-								std::transform(frameImagesRaw[iLineInt][iRS][iDS].rbegin() + frameImagesRaw[iLineInt][iRS][iDS].size() - 1 - (j*width_m + (width_m + width) / 2),
-									frameImagesRaw[iLineInt][iRS][iDS].rbegin() + frameImagesRaw[iLineInt][iRS][iDS].size() - 1 - (j*width_m + (width_m - width) / 2),
-									frameImagesD[iFrameInt][ind].begin() + j * width, [](const int16& a){return uInt16(a) + 32768; });
-							}
+							ind = iLineInt*nRS*nDwellSamples + iRS*nDwellSamples + (nDwellSamples - 1) - iDS;
 						}
+
+						// Because sometimes we use a dealy, we need to process the data row-by-row instead of just copying the whole directly:
+						// std::transform(frameImagesRaw[i].begin(), frameImagesRaw[i].end(), frameImagesDL[iFrameInt].begin(), [](const int16& a){return uInt16(a) + 32768; });
+						for (size_t j = 0; j < height; ++j){
+							std::transform(frameImagesRaw[iLineInt][iRS][iDS].begin() + j*width_m + (width_m - width) / 2,
+								frameImagesRaw[iLineInt][iRS][iDS].begin() + j*width_m + (width_m + width) / 2,
+								frameImagesD[iFrameInt][ind].begin() + j * width, [](const int16& a){return uInt16(a) + 32768; });
+						}
+
 					}
 					else{
 						size_t ind = iLineInt*nRS*nDwellSamples + iRS*nDwellSamples + iDS;
@@ -397,6 +394,17 @@ void ExternalScan::execute(std::string fileName, bool saveAverageOnly, float64 m
 			std::vector<std::vector<uInt16> > tempV(nRS*nDwellSamples, std::vector<uInt16>((size_t)width*height));
 			std::vector<std::vector<uInt16> >::iterator it = frameImagesD[iFrameInt].begin();
 			std::copy(it + iLineInt*nRS*nDwellSamples, it + iLineInt*nRS*nDwellSamples + nRS*nDwellSamples, tempV.begin());
+
+			if (!saveAverageOnly) {
+				std::string fileNameRS = fileName;
+				fileNameRS.insert(fileNameRS.find("."), "_Frame_");
+				fileNameRS.insert(fileNameRS.find("."), std::to_string(iFrameInt));
+				fileNameRS.insert(fileNameRS.find("."), "_Line_");
+				fileNameRS.insert(fileNameRS.find("."), std::to_string(iLineInt));
+				fileNameRS.insert(fileNameRS.find("."), "_RSs_noFFT");
+				Tif::Write(tempV, (uInt32)width, (uInt32)height, fileNameRS);
+			}
+
 			// apply shift correction
 			if (correctTF){
 				try{
@@ -422,8 +430,8 @@ void ExternalScan::execute(std::string fileName, bool saveAverageOnly, float64 m
 
 		if (!saveAverageOnly) {
 			std::string fileNameL = fileName;
+			fileNameL.insert(fileNameL.find("."), "_LinesInFrame_");
 			fileNameL.insert(fileNameL.find("."), std::to_string(iFrameInt));
-			fileNameL.insert(fileNameL.find("."), "_LineInFrame");
 			Tif::Write(frameImagesL, (uInt32)width, (uInt32)height, fileNameL);
 		}
 	}
@@ -437,7 +445,7 @@ void ExternalScan::execute(std::string fileName, bool saveAverageOnly, float64 m
 	}
 
 	std::string fileNameS = fileName;	//make a new file name for the stacked image
-	fileNameS.insert(fileNameS.find("."), "_stack");
+	fileNameS.insert(fileNameS.find("."), "_Frames");
 
 	if (!saveAverageOnly) Tif::Write(frameImagesF, (uInt32)width, (uInt32)height, fileNameS);
 	Tif::Write(frameImagesA, (uInt32)width, (uInt32)height, fileName);

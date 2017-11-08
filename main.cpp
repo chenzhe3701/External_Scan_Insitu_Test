@@ -50,9 +50,9 @@ int main(int argc, char *argv[]) {
 		uInt64 dwellSamples = 2;
 
 		bool snake = true;
-		std::string timeLog = "d:\\timgLog.txt";
-		uInt64 width = 4096;
-		uInt64 height = 4096;
+		std::string timeLog = "d:\\Img\\timgLog.txt";
+		uInt64 width = 2048;
+		uInt64 height = 2048;
 
 		float64 vBlack = -1.25;			//voltage for black
 		float64 vWhite = 1.75;			//voltage for whilte
