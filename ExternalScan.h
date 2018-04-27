@@ -130,7 +130,7 @@ public:
 			nRS = 2;
 		}
 		else{
-			width_m = width + 2 * (uInt64)(width * 0.06);
+			width_m = width + 2 * (uInt64)(width * 0.16);
 			nRS = 1;
 		}
 		scanData = generateScanData();
@@ -193,7 +193,7 @@ std::vector<float64> ExternalScan::generateScanData() const {
 	std::for_each(xData.begin(), xData.end(), [scaleX](float64& v){v *= scaleX; });//scale so limits are +/- vRangeH
 	std::for_each(yData.begin(), yData.end(), [scaleY](float64& v){v *= scaleY; });//scale so limits are +/- vRangeV
 
-	float64 d1 = (xData[1] - xData[0])/4;
+	float64 d1 = (xData[1] - xData[0])/2/4;	// dividing by 2 equals to using the same step size in voltage jump, because e.g., 4 volts on both side is 8 volts...
 	// If snake, insert at begin&end.  If raster, only insert at begin.
 	for (int i = 0; i < (width_m - width) / 2; ++i){
 		xData.insert(xData.begin(), xData.front() - d1);
