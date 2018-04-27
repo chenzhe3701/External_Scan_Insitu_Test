@@ -1,4 +1,5 @@
 #include <iostream>
+#include <string>
 #include <fstream>
 #include <windows.h>
 #include <stdio.h>
@@ -72,13 +73,14 @@ void simMouseClick(int x, int y)
 	SendInput(1, &ip, sizeof(INPUT));
 	Sleep(200);
 }
-void externalOnOff(std::string A){
+void externalOnOff(std::string A = "Microscope Control v7.6.1   User: supervisor"){
 	std::wstring WA(A.begin(), A.end());
 	HWND hwnd = FindWindow(NULL, WA.c_str());
 	if (hwnd) {
 		SetForegroundWindow(hwnd);
 		Sleep(1000);
-		simMouseClick(50, 200);	// click quad 1
+		//simMouseClick(50, 200);	// click quad 1
+		simMouseClick(1300, 200);	// click quad 2, sometimes 50 overlapped by sth else
 		Sleep(1000);
 		simAltKey('c');
 		Sleep(1000);
@@ -86,7 +88,7 @@ void externalOnOff(std::string A){
 		Sleep(1000);
 	}
 	else{
-		std::cout << "window not found" << std::endl;
+		std::cout << A << " window not found" << std::endl;
 	}
 }
 
@@ -97,7 +99,7 @@ int main(int argc, char *argv[])
 		externalOnOff(str);
 	}
 	else{
-		externalOnOff("Microscope Control v7.6.1   User: supervisor");
+		externalOnOff("Microscope Control v7.6.1   User: supervisor"); // supervisor support
 	}
 		
 	return 0;
