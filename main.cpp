@@ -165,12 +165,12 @@ int main(int argc, char *argv[]) {
 			//write time stamp to time stamp log
 			std::ofstream of(timeLog, std::ios_base::app);
 			if (!exists)
-				of << "filename\timage start\timage start (unix)\timage end\timage end (unix)\n"; //write header on first entry
+				of << "filename\timage_start\timage_start_unix\timage_end\timage_end_unix\tdwellSamples\trasterSnake\tdelayRatio\n"; //write header on first entry
 			std::string startTime = std::asctime(std::localtime(&start));
 			startTime.pop_back();
 			std::string endTime = std::asctime(std::localtime(&end));
 			endTime.pop_back();
-			of << output << "\t" << startTime.data() << "\t" << start << "\t" << endTime.data() << "\t" << end << "\n";
+			of << output << "\t" << startTime.data() << "\t" << start << "\t" << endTime.data() << "\t" << end << "\t" << dwellSamples << "\t" << raster << "\t" << delayRatio << "\n";
 		}
 	}
 	catch (std::exception& e) {
