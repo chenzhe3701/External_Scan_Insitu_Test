@@ -53,7 +53,7 @@
 //#endif
 #include <windows.h>
 #include "NIDAQmx.h"
-#include "MachineTalkControl.hpp"	// add this to use the computer's audio system, virtual keyboard, and virtual mouse
+// #include "MachineTalkControl.hpp"	// add this to use the computer's audio system, virtual keyboard, and virtual mouse
 
 class ExternalScan {
 private:
@@ -205,7 +205,7 @@ std::vector<float64> ExternalScan::generateScanData() const {
 		}
 	}
 	std::cout << xData.front() << ",," << xData.back();
-	std::reverse(yData.begin(), yData.end());	// y should be reversed to get positive image
+	// std::reverse(yData.begin(), yData.end());	// y should be reversed to get positive image for FEI Teneo. But not necessary for Tescan
 
 	//generate single pass scan, double the data if we always use snake.  If use raster, do not double.
 	std::vector<float64> scan;
