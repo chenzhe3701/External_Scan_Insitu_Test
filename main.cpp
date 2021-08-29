@@ -36,20 +36,23 @@
 
 #include "ExternalScan.h"
 
-static const float64 maxVoltage = 5.0;//hard coded limit on voltage amplitude to protect scan coils. For Tescan, this is 5.0. Use 4.6 to get same field of view as shown in UI.
+static const float64 maxVoltage = 5.0; //hard coded limit on voltage amplitude to protect scan coils. For Tescan, this is 5.0. Use 4.6 to get same field of view as shown in UI.
 
 int main(int argc, char *argv[]) {
 	try {
 		//arguments
-		std::string xPath = "dev1/ao0";
-		std::string yPath = "dev1/ao1";
-		std::string ePath = "dev1/ai2";
+		std::string xPath = "dev2/ao0";
+		std::string yPath = "dev2/ao1";
+		std::string ePath = "dev2/ai2";
 		std::string output = "d:/testImage/test_image.tiff";
 		float64 scanVoltageH = 4.6;	//horizontal voltage
 		float64 scanVoltageV = 4.6;	//vertical voltage
 		uInt64 dwellSamples = 4;
+		float64 delayRatio = 0.16;	// addtional ratio of time to spend at beginning of line scan (mainly useful for raster)
 
-		bool snake = 1;
+		bool raster = true;
+		bool snake = !raster;
+
 		std::string timeLog = "d:/testImage/timgLog.txt";
 		uInt64 width = 4096;
 		uInt64 height = 4096;
@@ -74,11 +77,12 @@ int main(int argc, char *argv[]) {
 		ss << "\t -e : path to ETD analog in channel (defaults to " << ePath << ")\n";
 		ss << "\t -a : half amplitude of scan in volts, horizontal (defaults to " << scanVoltageH << ")\n";
 		ss << "\t -b : half amplitude of scan in volts, vertical (defaults to " << scanVoltageV << ")\n";
+		ss << "\t -d : delay ratio at beginning of line for raster scan (defaults to " << delayRatio << ")\n";
 		ss << "\t -o : output image name (tif format) (defaults to " << output << ")\n";
 		ss << "\t[-s]: dwellSamples per pixel (defaults to " << dwellSamples << ")\n";
 		ss << "\t[-w]: scan width in pixels (defaults to " << width << ")\n";
 		ss << "\t[-h]: scan height in pixels (defaults to " << height << ")\n";
-		ss << "\t[-r]: scan pattern option (1=snake (default), 0=raster)\n";
+		ss << "\t[-r]: scan pattern option (nonzero, e.g., 1 = raster (default), 0=snake)\n";
 		ss << "\t[-t]: append image aquisitions times to log file (defaults to " << timeLog << ")\n";
 		ss << "\t[-k]: voltage for black pixel (defaults to " << vBlack << ")\n";
 		ss << "\t[-i]: voltage for white pixel (defaults to " << vWhite << ")\n";
@@ -108,10 +112,15 @@ int main(int argc, char *argv[]) {
 				case 'e': ePath = std::string(argv[i + 1]); break;
 				case 's': dwellSamples = atoi(argv[i + 1]); break;
 				case 'a': scanVoltageH = atof(argv[i + 1]); break;
+				case 'b': scanVoltageV = atof(argv[i + 1]); break;
+				case 'd': delayRatio = atof(argv[i+1]); break;
 				case 'o': output = std::string(argv[i + 1]); break;
 				case 'w': width = atoi(argv[i + 1]); break;
 				case 'h': height = atoi(argv[i + 1]); break;
-				case 'r': snake = atoi(argv[i + 1]); break;
+				case 'r': 
+					raster = bool(atoi(argv[i + 1])); // anything non-zero is true
+					snake = !raster;
+					break;
 				case 't': timeLog = std::string(argv[i + 1]); break;
 				case 'c': correctTF = atoi(argv[i + 1]); break;
 				case 'k': vBlack = atof(argv[i + 1]); break;
@@ -119,8 +128,7 @@ int main(int argc, char *argv[]) {
 				case 'f': maxShift = atof(argv[i + 1]); break;
 				case 'v': saveAverageOnly = atoi(argv[i + 1]); break;
 				case 'n': nFrames = atoi(argv[i + 1]); break;
-				case 'l': nLines = atoi(argv[i + 1]); break;
-				case 'b': scanVoltageV = atof(argv[i + 1]); break;
+				case 'l': nLines = atoi(argv[i + 1]); break;				
 				// case 'p': autoLoop = atoi(argv[i + 1]); break;
 				}
 				if (requiresOption) ++i;//double increment if the next agrument isn't a flag
@@ -136,9 +144,11 @@ int main(int argc, char *argv[]) {
 		if (0.0 == scanVoltageV) throw std::runtime_error(ss.str() + "(b flag missing or empty)\n");
 		if (scanVoltageH > maxVoltage) throw std::runtime_error(ss.str() + "(scan amplitude is too large - passed " + std::to_string(scanVoltageH) + ", max " + std::to_string(maxVoltage) + ")\n");
 		if (scanVoltageV > maxVoltage) throw std::runtime_error(ss.str() + "(scan amplitude is too large - passed " + std::to_string(scanVoltageV) + ", max " + std::to_string(maxVoltage) + ")\n");
-
+		
+		float64 maxDelayRatio = (maxVoltage-scanVoltageH) / (scanVoltageH/4);	// see note for 'd1' in 'ExternalScan.h'
+		if (delayRatio > maxDelayRatio) throw std::runtime_error(ss.str() + "delay ratio is too large - passed " + std::to_string(delayRatio) + ", max " + std::to_string(maxDelayRatio) + ")\n");
 		//create scan opject
-		ExternalScan scan(xPath, yPath, ePath, dwellSamples, scanVoltageH, scanVoltageV, width, height, snake, vBlack, vWhite, nLines, nFrames);
+		ExternalScan scan(xPath, yPath, ePath, dwellSamples, scanVoltageH, scanVoltageV, width, height, snake, vBlack, vWhite, nLines, nFrames, delayRatio);
 
 		//execute scan and write image
 		std::time_t start = std::time(NULL);
