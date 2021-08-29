@@ -41,18 +41,18 @@ static const float64 maxVoltage = 5.0;//hard coded limit on voltage amplitude to
 int main(int argc, char *argv[]) {
 	try {
 		//arguments
-		std::string xPath = "dev2/ao0";
-		std::string yPath = "dev2/ao1";
-		std::string ePath = "dev2/ai2";
+		std::string xPath = "dev1/ao0";
+		std::string yPath = "dev1/ao1";
+		std::string ePath = "dev1/ai2";
 		std::string output = "d:/testImage/test_image.tiff";
 		float64 scanVoltageH = 4.6;	//horizontal voltage
 		float64 scanVoltageV = 4.6;	//vertical voltage
 		uInt64 dwellSamples = 4;
 
-		uInt64 snake = 3;
+		bool snake = 1;
 		std::string timeLog = "d:/testImage/timgLog.txt";
-		uInt64 width = 1024;
-		uInt64 height = 1024;
+		uInt64 width = 4096;
+		uInt64 height = 4096;
 
 		float64 vBlack = 0;			//voltage for black
 		float64 vWhite = 1;			//voltage for whilte
@@ -66,17 +66,19 @@ int main(int argc, char *argv[]) {
 
 		//build help string
 		std::stringstream ss;
-		ss << "usage: " + std::string(argv[0]) + " -x path -y path -e path -s dwellSamples -a voltage -o file [-w width] [-h height] [-r] [-t file]\n";
+		ss << "usage: " + std::string(argv[0]) + " -x path -y path -e path -a voltage -b voltage -o file "
+			+ "[-s dwellSamples] [-w width] [-h height] [-r RasterSnake] [-t file] [-k voltage] [-i voltage] "
+			+ "[-f maxShift] [-v saveAverageOnly] [-n nFrames] [-l nLines] [-c correctTF]\n";
 		ss << "\t -x : path to X analog out channel (e.g. 'Dev0/ao0') (defaults to " << xPath << ")\n";
 		ss << "\t -y : path to Y analog out channel (defaults to " << yPath << ")\n";
 		ss << "\t -e : path to ETD analog in channel (defaults to " << ePath << ")\n";
-		ss << "\t -s : dwellSamples per pixel (defaults to " << dwellSamples << ")\n";
 		ss << "\t -a : half amplitude of scan in volts, horizontal (defaults to " << scanVoltageH << ")\n";
 		ss << "\t -b : half amplitude of scan in volts, vertical (defaults to " << scanVoltageV << ")\n";
 		ss << "\t -o : output image name (tif format) (defaults to " << output << ")\n";
+		ss << "\t[-s]: dwellSamples per pixel (defaults to " << dwellSamples << ")\n";
 		ss << "\t[-w]: scan width in pixels (defaults to " << width << ")\n";
 		ss << "\t[-h]: scan height in pixels (defaults to " << height << ")\n";
-		ss << "\t[-r]: scan pattern option (1=snake (default), 2=raster)\n";
+		ss << "\t[-r]: scan pattern option (1=snake (default), 0=raster)\n";
 		ss << "\t[-t]: append image aquisitions times to log file (defaults to " << timeLog << ")\n";
 		ss << "\t[-k]: voltage for black pixel (defaults to " << vBlack << ")\n";
 		ss << "\t[-i]: voltage for white pixel (defaults to " << vWhite << ")\n";
