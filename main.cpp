@@ -45,17 +45,17 @@ int main(int argc, char *argv[]) {
 		std::string yPath = "dev2/ao1";
 		std::string ePath = "dev2/ai2";
 		std::string output = "d:/testImage/test_image.tiff";
-		float64 scanVoltageH = 4.6;	//horizontal voltage
-		float64 scanVoltageV = 4.6;	//vertical voltage
+		float64 scanVoltageH = 4.65;	//horizontal voltage
+		float64 scanVoltageV = 4.65;	//vertical voltage
 		uInt64 dwellSamples = 4;
-		float64 delayRatio = 0.16;	// addtional ratio of time to spend at beginning of line scan (mainly useful for raster)
+		float64 delayRatio = 0.04;	// addtional ratio of time to spend at beginning of line scan (mainly useful for raster)
 
 		bool raster = true;
 		bool snake = !raster;
 
 		std::string timeLog = "d:/testImage/timgLog.txt";
-		uInt64 width = 4096;
-		uInt64 height = 4096;
+		uInt64 width = 1024;
+		uInt64 height = 1024;
 
 		float64 vBlack = 0;			//voltage for black
 		float64 vWhite = 1;			//voltage for whilte
@@ -145,7 +145,8 @@ int main(int argc, char *argv[]) {
 		if (scanVoltageH > maxVoltage) throw std::runtime_error(ss.str() + "(scan amplitude is too large - passed " + std::to_string(scanVoltageH) + ", max " + std::to_string(maxVoltage) + ")\n");
 		if (scanVoltageV > maxVoltage) throw std::runtime_error(ss.str() + "(scan amplitude is too large - passed " + std::to_string(scanVoltageV) + ", max " + std::to_string(maxVoltage) + ")\n");
 		
-		float64 maxDelayRatio = (maxVoltage-scanVoltageH) / (scanVoltageH/4);	// see note for 'd1' in 'ExternalScan.h'
+		float64 maxDelayRatio = (maxVoltage-scanVoltageH) / scanVoltageH /2 * 4;	// see note for 'd1' in 'ExternalScan.h'
+		std::cout << "maxDelayRatio = " << maxDelayRatio << std::endl;
 		if (delayRatio > maxDelayRatio) throw std::runtime_error(ss.str() + "delay ratio is too large - passed " + std::to_string(delayRatio) + ", max " + std::to_string(maxDelayRatio) + ")\n");
 		//create scan opject
 		ExternalScan scan(xPath, yPath, ePath, dwellSamples, scanVoltageH, scanVoltageV, width, height, snake, vBlack, vWhite, nLines, nFrames, delayRatio);
