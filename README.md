@@ -1,4 +1,18 @@
 # External_Scan_Insitu_Test
-This repository will includes all the original files that Will Lenthe gave me.  Note that each version might be significantly different.  I might also put my edits to the previous versions.  However, the code that I first actually ran an insitu test with is the code that I wrote based on the code that Will Lenthe gave me on 20170522.
 
-Update 2017-09-25.  My codes have been uploaded as a new branch.  I haven't merged it to the master branch, but you are welcome to use it, and this is also a reminder that I you use my branch instead of any of the previous versions, you should be aware of this.
+Code for collecting and correcting SEM images via external scan control.
+
+If you use this software please consider citing the accompanying paper: https://doi.org/10.1016/j.ultramic.2018.08.025
+
+The codes in this reposiroty originates from codes that Dr. Will Lenthe shared with we during the developement stage of these codes (from the end of 2016 to May of 2017), when he was a graduate student in Professor Tresa Pollock's group, and I was a postdoc researcher in Professor Samantha Daly's group.  
+
+The 'main stream' of the codes accommanying the aforementioned paper can be found in the repository: https://github.com/PollockGroup/ExternalScanControl.
+
+The codes in this repository has modifications and additional functions to be used for specific equipments.  
+
+- Commits mad prior to 4/26/2018 were for experiments using the Daly lab equipments (FEI Teneo SEM and + NI USB 6251 BNC DAQ device).  
+
+- The more recent updates were for experiments in Professor John Allison's lab in University of Michigan, using Tescan Mira 3 SEM + NI USB 6251 BNC DAQ device.
+
+
+

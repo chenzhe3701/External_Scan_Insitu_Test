@@ -53,7 +53,7 @@
 //#endif
 #include <windows.h>
 #include "NIDAQmx.h"
-#include "MachineTalkControl.hpp"	// add this to use the computer's audio system, virtual keyboard, and virtual mouse
+// #include "MachineTalkControl.hpp"	// add this to use the computer's audio system, virtual keyboard, and virtual mouse
 
 class ExternalScan {
 private:
@@ -62,6 +62,7 @@ private:
 	uInt64 nDwellSamples;                         //samples per pixel (collection occurs at fastest possible speed)
 	float64 vRangeH, vRangeV;					  //voltage ranges (horizontal and vertical) for scan (scan will go from -vRange -> +vRange in the larger direction)
 	uInt64 width, height;						  //dimensions of the scan
+	float64 delayRatio;							  //delayRatio at the beginning of line for raster scan
 	bool snake;                                   //true/false to snake/raster
 	TaskHandle hInput, hOutput;                   //handles to input and output tasks
 	float64 sampleRate;                           //maximum device sample rate
@@ -109,7 +110,7 @@ public:
 	}
 
 	//chenzhe: add width and witdh_i part.  add more inputs.
-	ExternalScan(std::string x, std::string y, std::string e, uInt64 s, float64 a, float64 b, uInt64 w, uInt64 h, bool sn, float64 black, float64 white, uInt64 ls, uInt64 fs) {
+	ExternalScan(std::string x, std::string y, std::string e, uInt64 s, float64 a, float64 b, uInt64 w, uInt64 h, bool sn, float64 black, float64 white, uInt64 ls, uInt64 fs, float64 dr) {
 		xPath = x;
 		yPath = y;
 		etdPath = e;
@@ -118,6 +119,7 @@ public:
 		vRangeV = b;
 		width = w;
 		height = h;
+		delayRatio = dr;
 		snake = sn;
 		vBlack = black;
 		vWhite = white;
@@ -126,11 +128,11 @@ public:
 
 		// externalOnOff();	// chenzhe, when constructing, first turn external on
 		if (snake){
-			width_m = width + 2 * (uInt64)(width * 0.01);	// I think if > 0.05, it becomes very dangerous !!!
+			width_m = width + 2 * (uInt64)(width * 0.02/2);	// I think if > 0.05, it becomes very dangerous !!!
 			nRS = 2;
 		}
 		else{
-			width_m = width + 2 * (uInt64)(width * 0.16);
+			width_m = width + 2 * (uInt64)(width * delayRatio/2);	// delayRatio/2, because each side get half of the delay time.
 			nRS = 1;
 		}
 		scanData = generateScanData();
@@ -193,7 +195,12 @@ std::vector<float64> ExternalScan::generateScanData() const {
 	std::for_each(xData.begin(), xData.end(), [scaleX](float64& v){v *= scaleX; });//scale so limits are +/- vRangeH
 	std::for_each(yData.begin(), yData.end(), [scaleY](float64& v){v *= scaleY; });//scale so limits are +/- vRangeV
 
-	float64 d1 = (xData[1] - xData[0])/2/4;	// dividing by 2 equals to using the same step size in voltage jump, because e.g., 4 volts on both side is 8 volts...
+	// delayRatio portion of scanVoltageH is added to the scan
+	// If snake, half addtional time added to the left/beginning side, and half added to the right/end side of the scan
+	// If raster, only added to the left side only. But added twice.
+	// We want to be safe
+	// reduce this step further by a factor of 4, so it is even smaller, so 100% delay corresponds to 1V
+	float64 d1 = (xData[1] - xData[0])/4;	
 	// If snake, insert at begin&end.  If raster, only insert at begin.
 	for (int i = 0; i < (width_m - width) / 2; ++i){
 		xData.insert(xData.begin(), xData.front() - d1);
@@ -204,8 +211,8 @@ std::vector<float64> ExternalScan::generateScanData() const {
 			xData.insert(xData.begin(), xData.front() - d1);
 		}
 	}
-	std::cout << xData.front() << ",," << xData.back();
-	std::reverse(yData.begin(), yData.end());	// y should be reversed to get positive image
+	std::cout << "scan voltage range: " << xData.front() << " volts to " << xData.back() << " volts \n";
+	// std::reverse(yData.begin(), yData.end());	// y should be reversed to get positive image for FEI Teneo. But not necessary for Tescan
 
 	//generate single pass scan, double the data if we always use snake.  If use raster, do not double.
 	std::vector<float64> scan;

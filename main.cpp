@@ -36,7 +36,7 @@
 
 #include "ExternalScan.h"
 
-static const float64 maxVoltage = 4.0;//hard coded limit on voltage amplitude to protect scan coils
+static const float64 maxVoltage = 5.0; //hard coded limit on voltage amplitude to protect scan coils. For Tescan, this is 5.0. Use 4.6 to get same field of view as shown in UI.
 
 int main(int argc, char *argv[]) {
 	try {
@@ -44,39 +44,45 @@ int main(int argc, char *argv[]) {
 		std::string xPath = "dev2/ao0";
 		std::string yPath = "dev2/ao1";
 		std::string ePath = "dev2/ai2";
-		std::string output = "";
-		float64 scanVoltageH = 3.86;	//horizontal voltage
-		float64 scanVoltageV = 3.9;	//vertical voltage
-		uInt64 dwellSamples = 2;
+		std::string output = "d:/testImage/test_image.tiff";
+		float64 scanVoltageH = 4.65;	//horizontal voltage
+		float64 scanVoltageV = 4.65;	//vertical voltage
+		uInt64 dwellSamples = 4;
+		float64 delayRatio = 0.04;	// addtional ratio of time to spend at beginning of line scan (mainly useful for raster)
 
-		bool snake = true;
-		std::string timeLog = "d:\\Img\\timgLog.txt";
-		uInt64 width = 2048;
-		uInt64 height = 2048;
+		bool raster = true;
+		bool snake = !raster;
 
-		float64 vBlack = -1.25;			//voltage for black
-		float64 vWhite = 1.75;			//voltage for whilte
+		std::string timeLog = "d:/testImage/timgLog.txt";
+		uInt64 width = 1024;
+		uInt64 height = 1024;
+
+		float64 vBlack = 0;			//voltage for black
+		float64 vWhite = 1;			//voltage for whilte
 		bool saveAverageOnly = true;	//whether to save averaged figure ony
 		bool correctTF = true;
-		uInt64 nFrames = 4;				// frame integration.
-		uInt64 nLines = 2;				// line integration.
+		uInt64 nFrames = 1;				// frame integration.
+		uInt64 nLines = 1;				// line integration.
 		float64 maxShift = 20.0;		//maximum pixel shift to correct
-		uInt64 autoLoop = 0;			//whether use this code to do an auto image test with iFast
-		std::string output_raw;			// records the raw output name
+		// uInt64 autoLoop = 0;			//whether use this code to do an auto image test with iFast
+		// std::string output_raw;			// records the raw output name
 
 		//build help string
 		std::stringstream ss;
-		ss << "usage: " + std::string(argv[0]) + " -x path -y path -e path -s dwellSamples -a voltage -o file [-w width] [-h height] [-r] [-t file]\n";
+		ss << "usage: " + std::string(argv[0]) + " -x path -y path -e path -a voltage -b voltage -o file "
+			+ "[-s dwellSamples] [-w width] [-h height] [-r RasterSnake] [-t file] [-k voltage] [-i voltage] "
+			+ "[-f maxShift] [-v saveAverageOnly] [-n nFrames] [-l nLines] [-c correctTF]\n";
 		ss << "\t -x : path to X analog out channel (e.g. 'Dev0/ao0') (defaults to " << xPath << ")\n";
 		ss << "\t -y : path to Y analog out channel (defaults to " << yPath << ")\n";
 		ss << "\t -e : path to ETD analog in channel (defaults to " << ePath << ")\n";
-		ss << "\t -s : dwellSamples per pixel (defaults to " << dwellSamples << ")\n";
 		ss << "\t -a : half amplitude of scan in volts, horizontal (defaults to " << scanVoltageH << ")\n";
 		ss << "\t -b : half amplitude of scan in volts, vertical (defaults to " << scanVoltageV << ")\n";
+		ss << "\t -d : delay ratio at beginning of line for raster scan (defaults to " << delayRatio << ")\n";
 		ss << "\t -o : output image name (tif format) (defaults to " << output << ")\n";
+		ss << "\t[-s]: dwellSamples per pixel (defaults to " << dwellSamples << ")\n";
 		ss << "\t[-w]: scan width in pixels (defaults to " << width << ")\n";
 		ss << "\t[-h]: scan height in pixels (defaults to " << height << ")\n";
-		ss << "\t[-r]: scan in a raster instead of snake pattern (defaults to false, i.e., using snake)\n";
+		ss << "\t[-r]: scan pattern option (nonzero, e.g., 1 = raster (default), 0=snake)\n";
 		ss << "\t[-t]: append image aquisitions times to log file (defaults to " << timeLog << ")\n";
 		ss << "\t[-k]: voltage for black pixel (defaults to " << vBlack << ")\n";
 		ss << "\t[-i]: voltage for white pixel (defaults to " << vWhite << ")\n";
@@ -84,7 +90,7 @@ int main(int argc, char *argv[]) {
 		ss << "\t[-v]: save averaged image only (defaults to " << saveAverageOnly << ")\n";
 		ss << "\t[-n]: # of frames to integrate (defaults to " << nFrames << ")\n";
 		ss << "\t[-l]: # of lines to integrate (defaults to " << nLines << ")\n";
-		ss << "\t[-p]: autoLoop until stop signal (3000Hz) and auto fileName, default = " << autoLoop << ")\n";
+		// ss << "\t[-p]: autoLoop until stop signal (3000Hz) and auto fileName, default = " << autoLoop << ")\n";
 		ss << "\t[-c]: correct using FFT or not, default = " << correctTF << ")\n";
 
 		//parse arguments
@@ -97,10 +103,7 @@ int main(int argc, char *argv[]) {
 			for (size_t j = 0; j < flagCount; j++) {
 				//check if this flag has a corresponding argument and make sure that argument exists
 				bool requiresOption = true;		// requiresOption means --> switch should be followed by another 
-				switch (argv[i][j + 1]) {
-				case 'r':
-					requiresOption = false;
-				}
+
 				if (requiresOption && (i + 1 == argc || j + 1 != flagCount)) throw std::runtime_error(std::string("missing argument for option ") + argv[i][j]);
 
 				switch (argv[i][j + 1]) {
@@ -109,14 +112,15 @@ int main(int argc, char *argv[]) {
 				case 'e': ePath = std::string(argv[i + 1]); break;
 				case 's': dwellSamples = atoi(argv[i + 1]); break;
 				case 'a': scanVoltageH = atof(argv[i + 1]); break;
-				case 'o': {
-					output = std::string(argv[i + 1]);
-					output_raw = output;
-					break;
-				}
+				case 'b': scanVoltageV = atof(argv[i + 1]); break;
+				case 'd': delayRatio = atof(argv[i+1]); break;
+				case 'o': output = std::string(argv[i + 1]); break;
 				case 'w': width = atoi(argv[i + 1]); break;
 				case 'h': height = atoi(argv[i + 1]); break;
-				case 'r': snake = false; break;
+				case 'r': 
+					raster = bool(atoi(argv[i + 1])); // anything non-zero is true
+					snake = !raster;
+					break;
 				case 't': timeLog = std::string(argv[i + 1]); break;
 				case 'c': correctTF = atoi(argv[i + 1]); break;
 				case 'k': vBlack = atof(argv[i + 1]); break;
@@ -124,9 +128,8 @@ int main(int argc, char *argv[]) {
 				case 'f': maxShift = atof(argv[i + 1]); break;
 				case 'v': saveAverageOnly = atoi(argv[i + 1]); break;
 				case 'n': nFrames = atoi(argv[i + 1]); break;
-				case 'l': nLines = atoi(argv[i + 1]); break;
-				case 'b': scanVoltageV = atof(argv[i + 1]); break;
-				case 'p': autoLoop = atoi(argv[i + 1]); break;
+				case 'l': nLines = atoi(argv[i + 1]); break;				
+				// case 'p': autoLoop = atoi(argv[i + 1]); break;
 				}
 				if (requiresOption) ++i;//double increment if the next agrument isn't a flag
 			}
@@ -141,51 +144,34 @@ int main(int argc, char *argv[]) {
 		if (0.0 == scanVoltageV) throw std::runtime_error(ss.str() + "(b flag missing or empty)\n");
 		if (scanVoltageH > maxVoltage) throw std::runtime_error(ss.str() + "(scan amplitude is too large - passed " + std::to_string(scanVoltageH) + ", max " + std::to_string(maxVoltage) + ")\n");
 		if (scanVoltageV > maxVoltage) throw std::runtime_error(ss.str() + "(scan amplitude is too large - passed " + std::to_string(scanVoltageV) + ", max " + std::to_string(maxVoltage) + ")\n");
+		
+		float64 maxDelayRatio = (maxVoltage-scanVoltageH) / scanVoltageH /2 * 4;	// see note for 'd1' in 'ExternalScan.h'
+		std::cout << "maxDelayRatio = " << maxDelayRatio << std::endl;
+		if (delayRatio > maxDelayRatio) throw std::runtime_error(ss.str() + "delay ratio is too large - passed " + std::to_string(delayRatio) + ", max " + std::to_string(maxDelayRatio) + ")\n");
+		//create scan opject
+		ExternalScan scan(xPath, yPath, ePath, dwellSamples, scanVoltageH, scanVoltageV, width, height, snake, vBlack, vWhite, nLines, nFrames, delayRatio);
 
-		// chenzhe, detectFrequency and do the scanning
-		int iR = 0;
-		int iC = 0;
-		bool continueTF = true;
-		while (continueTF){
-			if (1 == autoLoop){
-				int frequency = detectFrequency() - 1000;
-				std::cout << "safitfactory freq detected" << std::endl;
-				iR = frequency / 100;
-				iC = (frequency - 100 * iR) / 4;
-				output = output_raw + "_r" + std::to_string(iR) + "c" + std::to_string(iC) + ".tif";
-				if (iR > 19) return EXIT_SUCCESS;	// stop by sending a >=3000Hz sound. Or iR >= 20.
-			}
-			else{
-				output = output_raw;
-				continueTF = false;
-			}
+		//execute scan and write image
+		std::time_t start = std::time(NULL);
+		scan.execute(output, saveAverageOnly, maxShift, correctTF);
+		std::time_t end = std::time(NULL);
 
-			//create scan opject
-			ExternalScan scan(xPath, yPath, ePath, dwellSamples, scanVoltageH, scanVoltageV, width, height, snake, vBlack, vWhite, nLines, nFrames);
+		//append time stamps to log if needed
+		if (!timeLog.empty()){
+			//check if log file already exists
+			std::ifstream is(timeLog);
+			bool exists = is.good();
+			is.close();
 
-			//execute scan and write image
-			std::time_t start = std::time(NULL);
-			scan.execute(output, saveAverageOnly, maxShift, correctTF);
-			std::time_t end = std::time(NULL);
-
-			//append time stamps to log if needed
-			if (!timeLog.empty()) {
-				//check if log file already exists
-				std::ifstream is(timeLog);
-				bool exists = is.good();
-				is.close();
-
-				//write time stamp to time stamp log
-				std::ofstream of(timeLog, std::ios_base::app);
-				if (!exists) of << "filename\timage start\timage start (unix)\timage end\timage end (unix)\n";//write header on first entry
-				std::string startTime = std::asctime(std::localtime(&start));
-				startTime.pop_back();
-				std::string endTime = std::asctime(std::localtime(&end));
-				endTime.pop_back();
-				of << output << "\t" << startTime.data() << "\t" << start << "\t" << endTime.data() << "\t" << end << "\n";
-			}
-
-			//Beep(3000, 10000);	// beep to let MPC know scan finished
+			//write time stamp to time stamp log
+			std::ofstream of(timeLog, std::ios_base::app);
+			if (!exists)
+				of << "filename\timage_start\timage_start_unix\timage_end\timage_end_unix\tdwellSamples\trasterSnake\tdelayRatio\n"; //write header on first entry
+			std::string startTime = std::asctime(std::localtime(&start));
+			startTime.pop_back();
+			std::string endTime = std::asctime(std::localtime(&end));
+			endTime.pop_back();
+			of << output << "\t" << startTime.data() << "\t" << start << "\t" << endTime.data() << "\t" << end << "\t" << dwellSamples << "\t" << raster << "\t" << delayRatio << "\n";
 		}
 	}
 	catch (std::exception& e) {
