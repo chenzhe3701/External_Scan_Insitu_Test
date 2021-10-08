@@ -10,7 +10,7 @@ The 'main stream' of the codes accommanying the aforementioned paper can be foun
 
 The codes in this repository has modifications and additional functions to be used for specific equipments.  
 
-- Commits mad prior to 4/26/2018 were for experiments in Professor Samantha Daly's lab at UCSB, using FEI Teneo SEM + NI USB 6251 BNC DAQ device.  
+- Commits mad prior to 4/26/2018 were for experiments in Professor Samantha Daly's lab at UCSB, using FEI Teneo SEM + NI USB 6251 BNC DAQ device.  The implementation was described in the following paper: https://doi.org/10.1007/s11340-018-0419-y   
 
 - The more recent updates were for experiments in Professor John Allison's lab at University of Michigan, using Tescan Mira 3 SEM + NI USB 6251 BNC DAQ device.
 
